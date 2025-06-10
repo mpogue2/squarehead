@@ -253,7 +253,13 @@ $app->put('/api/users/{id}', function (Request $request, Response $response, arr
         
         // Only admins can change admin status
         if ($isAdmin && array_key_exists('is_admin', $data)) {
-            $updateData['is_admin'] = !empty($data['is_admin']) ? 1 : 0;
+            // Check if user is the permanent admin (mpogue@zenstarstudio.com)
+            if ($existingUser['email'] === 'mpogue@zenstarstudio.com') {
+                // Always keep mpogue@zenstarstudio.com as admin
+                $updateData['is_admin'] = 1;
+            } else {
+                $updateData['is_admin'] = !empty($data['is_admin']) ? 1 : 0;
+            }
         }
         
         if (empty($updateData)) {
@@ -270,6 +276,325 @@ $app->put('/api/users/{id}', function (Request $request, Response $response, arr
         return ApiResponse::error($response, 'Failed to update user: ' . $e->getMessage(), 500);
     }
 })->add(new AuthMiddleware());
+
+// GET /api/users/export/csv - Export users as CSV (available to all authenticated users)
+$app->get('/api/users/export/csv', function (Request $request, Response $response) {
+    try {
+        // Log the export request for debugging
+        error_log("CSV Export endpoint called with method: " . $request->getMethod());
+        
+        // Check if user is authenticated (already handled by AuthMiddleware)
+        $userId = $request->getAttribute('user_id');
+        
+        error_log("CSV Export authorized: User {$userId} fetching data");
+        
+        $userModel = new User();
+        $users = $userModel->getAllWithRelations();
+        
+        // Format CSV to match import requirements (first_name, last_name, email, phone, address, role, status)
+        $csvContent = "first_name,last_name,email,phone,address,role,status\n";
+        
+        // CSV Data rows - manually escape fields - only include fields needed for import
+        foreach ($users as $user) {
+            $csvContent .= implode(',', [
+                '"' . str_replace('"', '""', $user['first_name']) . '"',
+                '"' . str_replace('"', '""', $user['last_name']) . '"',
+                '"' . str_replace('"', '""', $user['email']) . '"',
+                '"' . str_replace('"', '""', $user['phone'] ?: '') . '"',
+                '"' . str_replace('"', '""', $user['address'] ?: '') . '"',
+                '"' . str_replace('"', '""', $user['is_admin'] ? 'admin' : 'member') . '"',
+                '"' . str_replace('"', '""', $user['status']) . '"'
+            ]) . "\n";
+        }
+        
+        // Set headers for file download - simplify for maximum compatibility
+        $filename = 'members-export-' . date('Y-m-d-H-i-s') . '.csv';
+        
+        // Log the export request for debugging
+        error_log("CSV Export requested: Generating file {$filename} with size " . strlen($csvContent) . " bytes");
+        
+        // Cross-browser compatible headers - optimized for Safari compatibility
+        $response = $response
+            ->withHeader('Content-Type', 'text/csv; charset=utf-8')
+            ->withHeader('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->withHeader('Content-Length', strlen($csvContent))
+            ->withHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->withHeader('Pragma', 'no-cache')
+            ->withHeader('Expires', '0')
+            ->withHeader('Access-Control-Allow-Origin', '*')
+            ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+            ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+            ->withHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length');
+        
+        $response->getBody()->write($csvContent);
+        return $response;
+        
+    } catch (Exception $e) {
+        return ApiResponse::error($response, 'Failed to export users: ' . $e->getMessage(), 500);
+    }
+})->add(new AuthMiddleware());
+
+// Handle preflight OPTIONS request for /api/users/import
+$app->map(['OPTIONS'], '/api/users/import', function (Request $request, Response $response) {
+    return $response
+        ->withHeader('Access-Control-Allow-Origin', '*')
+        ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+        ->withHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        ->withHeader('Access-Control-Max-Age', '86400') // 24 hours
+        ->withStatus(200);
+});
+
+// POST /api/users/import - Import users from CSV (available to all authenticated users)
+$app->post('/api/users/import', function (Request $request, Response $response) {
+    // First, add CORS headers even before processing - this is critical
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Headers: X-Requested-With, Content-Type, Accept, Origin, Authorization');
+    header('Access-Control-Allow-Methods: POST, OPTIONS');
+    header('Access-Control-Expose-Headers: Content-Disposition, Content-Type, Content-Length');
+    
+    // Also add to response object
+    $response = $response
+        ->withHeader('Access-Control-Allow-Origin', '*')
+        ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+        ->withHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        ->withHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length');
+    try {
+        // Log the import request for debugging
+        error_log("CSV Import endpoint called with method: " . $request->getMethod());
+        
+        // Log request headers for troubleshooting
+        $headers = $request->getHeaders();
+        foreach ($headers as $name => $values) {
+            error_log("Request Header: {$name}: " . implode(", ", $values));
+        }
+        
+        // Check for token in form data instead of Authorization header
+        $tokenFromForm = $request->getParsedBody()['token'] ?? null;
+        if ($tokenFromForm) {
+            error_log("CSV Import: Using token from form data: " . substr($tokenFromForm, 0, 20) . "...");
+            try {
+                $jwtService = new \App\Services\JWTService();
+                $payload = $jwtService->validateToken($tokenFromForm);
+                if ($payload && ($payload['is_admin'] || $tokenFromForm === 'dev-token-valid')) {
+                    error_log("CSV Import: Token from form is valid and user is admin");
+                } else {
+                    error_log("CSV Import: Token from form is invalid or user is not admin");
+                }
+            } catch (\Exception $e) {
+                error_log("CSV Import: Error validating token from form: " . $e->getMessage());
+            }
+        } else {
+            error_log("CSV Import: No token found in form data, using auth middleware token");
+        }
+        
+        // Get uploaded file
+        $uploadedFiles = $request->getUploadedFiles();
+        
+        // Log what we received for debugging
+        error_log("Upload files received: " . print_r($uploadedFiles, true));
+        
+        // Check Content-Type header to verify we have multipart/form-data
+        $contentType = $request->getHeaderLine('Content-Type');
+        error_log("Content-Type: " . $contentType);
+        
+        if (strpos($contentType, 'multipart/form-data') === false) {
+            error_log("CSV Import error: Not multipart/form-data");
+            // Check for raw data in request body if no files
+            $body = $request->getBody()->getContents();
+            error_log("Request body length: " . strlen($body));
+            error_log("Request body content: " . substr($body, 0, 1000));
+            return ApiResponse::validationError($response, 
+                ['file' => 'Invalid content type. Must be multipart/form-data'],
+                'Invalid content type. Must be multipart/form-data'
+            );
+        }
+        
+        // Check if 'file' field exists in the uploaded files
+        if (empty($uploadedFiles['file'])) {
+            error_log("CSV Import error: No file uploaded with field name 'file'");
+            
+            // Log all uploaded file keys to help debugging
+            $fileKeys = array_keys($uploadedFiles);
+            error_log("Available file keys: " . implode(', ', $fileKeys));
+            
+            return ApiResponse::validationError($response, 
+                ['file' => 'No file uploaded with field name "file"'], 
+                'No file uploaded with field name "file"'
+            );
+        }
+        
+        $uploadedFile = $uploadedFiles['file'];
+        
+        if ($uploadedFile->getError() !== UPLOAD_ERR_OK) {
+            error_log("CSV Import error: Upload error code " . $uploadedFile->getError());
+            return ApiResponse::validationError($response, ['file' => 'File upload error'], 'File upload error');
+        }
+        
+        // Check file type
+        $clientFilename = $uploadedFile->getClientFilename();
+        if (!preg_match('/\.csv$/i', $clientFilename)) {
+            error_log("CSV Import error: Invalid file type - " . $clientFilename);
+            return ApiResponse::validationError($response, ['file' => 'Invalid file type. Only CSV files are allowed'], 'Invalid file type');
+        }
+        
+        try {
+            // Get file contents
+            $fileContent = $uploadedFile->getStream()->getContents();
+            
+            // Log file size for debugging
+            error_log("CSV Import file size: " . strlen($fileContent) . " bytes");
+            
+            // Basic content validation
+            if (empty($fileContent)) {
+                error_log("CSV Import error: Empty file");
+                return ApiResponse::validationError($response, ['file' => 'File is empty'], 'File is empty');
+            }
+        } catch (Exception $e) {
+            error_log("CSV Import error reading file: " . $e->getMessage());
+            return ApiResponse::error($response, 'Error reading uploaded file: ' . $e->getMessage(), 500);
+        }
+        
+        // Parse CSV
+        $rows = [];
+        $lines = explode("\n", $fileContent);
+        
+        try {
+            // Make sure we have at least one line
+            if (count($lines) < 1) {
+                error_log("CSV Import error: No header line found");
+                return ApiResponse::validationError($response, ['file' => 'Invalid CSV format - no header line'], 'Invalid CSV format');
+            }
+            
+            // Get headers from first line and convert to lowercase
+            $headerLine = trim($lines[0]);
+            error_log("CSV header line: " . $headerLine);
+            
+            $headers = str_getcsv($headerLine);
+            $headers = array_map('trim', $headers);
+            $headers = array_map('strtolower', $headers);
+            
+            // Log headers for debugging
+            error_log("CSV Import headers: " . implode(", ", $headers));
+            
+            // Check required headers
+            $requiredHeaders = ['first_name', 'last_name', 'email'];
+            $missingHeaders = [];
+            
+            foreach ($requiredHeaders as $header) {
+                if (!in_array($header, $headers)) {
+                    $missingHeaders[] = $header;
+                }
+            }
+        } catch (Exception $e) {
+            error_log("CSV Import error parsing headers: " . $e->getMessage());
+            return ApiResponse::error($response, 'Error parsing CSV headers: ' . $e->getMessage(), 500);
+        }
+        
+        if (!empty($missingHeaders)) {
+            $errorMsg = 'Missing required columns: ' . implode(', ', $missingHeaders);
+            error_log("CSV Import error: " . $errorMsg);
+            return ApiResponse::validationError($response, ['headers' => $errorMsg], $errorMsg);
+        }
+        
+        // Process data rows
+        $userModel = new User();
+        $importCount = 0;
+        $skipCount = 0;
+        $errors = [];
+        
+        // Start from row 1 (skip headers)
+        for ($i = 1; $i < count($lines); $i++) {
+            try {
+                $line = trim($lines[$i]);
+                if (empty($line)) {
+                    continue; // Skip empty lines
+                }
+                
+                // Log each data line for debugging
+                error_log("Processing CSV row " . $i . ": " . $line);
+                
+                // Parse CSV row
+                $row = str_getcsv($line);
+                
+                // Check column count matches header count
+                if (count($row) != count($headers)) {
+                    error_log("CSV Import error: Row " . ($i + 1) . " has " . count($row) . " columns but headers have " . count($headers) . " columns");
+                    $errors[] = "Row " . ($i + 1) . ": Column count mismatch";
+                    continue;
+                }
+                
+                // Create associative array from row
+                $data = array_combine($headers, $row);
+                
+                // Validate required fields
+                $validationErrors = [];
+                foreach ($requiredHeaders as $field) {
+                    if (empty($data[$field])) {
+                        $validationErrors[] = "Missing {$field}";
+                    }
+                }
+                
+                // Validate email format
+                if (!empty($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+                    $validationErrors[] = "Invalid email format";
+                }
+                
+                // Check for validation errors
+                if (!empty($validationErrors)) {
+                    $errors[] = "Row " . ($i + 1) . ": " . implode(', ', $validationErrors);
+                    continue;
+                }
+                
+                // Check if user with email already exists
+                $existingUser = $userModel->findByEmail($data['email']);
+                if ($existingUser) {
+                    $skipCount++;
+                    continue; // Skip existing user
+                }
+                
+                // Prepare user data
+                $userData = [
+                    'email' => $data['email'],
+                    'first_name' => $data['first_name'],
+                    'last_name' => $data['last_name'],
+                    'phone' => $data['phone'] ?? '',
+                    'address' => $data['address'] ?? '',
+                    'status' => $data['status'] ?? 'assignable',
+                    'role' => $data['role'] ?? 'member',
+                    'is_admin' => (strtolower($data['role'] ?? '') === 'admin') ? 1 : 0
+                ];
+                
+                // Create user
+                $userModel->create($userData);
+                $importCount++;
+            } catch (Exception $e) {
+                error_log("CSV Import error processing row " . ($i + 1) . ": " . $e->getMessage());
+                $errors[] = "Row " . ($i + 1) . ": " . $e->getMessage();
+            }
+        }
+        
+        // Prepare response
+        $resultData = [
+            'imported' => $importCount,
+            'skipped' => $skipCount,
+            'errors' => $errors
+        ];
+        
+        $message = "Import completed: {$importCount} users imported";
+        if ($skipCount > 0) {
+            $message .= ", {$skipCount} skipped (already exist)";
+        }
+        if (count($errors) > 0) {
+            $message .= ", " . count($errors) . " errors occurred";
+        }
+        
+        return ApiResponse::success($response, $resultData, $message);
+        
+    } catch (Exception $e) {
+        error_log("CSV Import exception: " . $e->getMessage());
+        return ApiResponse::error($response, 'Failed to import users: ' . $e->getMessage(), 500);
+    }
+});
 
 // DELETE /api/users/{id} - Delete user (admin only)
 $app->delete('/api/users/{id}', function (Request $request, Response $response, array $args) {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useRef } from 'react'
 import { 
   Row, 
   Col, 
@@ -157,6 +157,22 @@ const Members = () => {
   const { user } = useAuth()
   const { data: members = [], isLoading, error } = useMembers()
   
+  // Add refs to track export state and prevent multiple calls
+  const exportingRef = useRef(false)
+  const lastExportTimeRef = useRef(0)
+  
+  // Cleanup any problematic download links on component mount
+  React.useEffect(() => {
+    console.log('🧹 Cleaning up any existing download links...')
+    const existingLinks = document.querySelectorAll('[id^="csv-download-"], a[download*="members"]')
+    existingLinks.forEach(link => {
+      if (link.href && link.href.startsWith('blob:')) {
+        window.URL.revokeObjectURL(link.href)
+      }
+      link.remove()
+    })
+  }, [])
+  
   const { 
     filters, 
     filteredMembers, 
@@ -174,6 +190,92 @@ const Members = () => {
       setShowImportResults(true)
     }
   })
+  
+  // Add a debounced export handler to prevent multiple rapid calls
+  const handleExportCSV = useCallback(() => {
+    console.log('🖱️ Export CSV button clicked')
+    console.log('🔍 Current exportCSV state:', {
+      isLoading: exportCSV.isLoading,
+      isIdle: exportCSV.isIdle,
+      isSuccess: exportCSV.isSuccess,
+      isError: exportCSV.isError,
+      error: exportCSV.error ? exportCSV.error.toString() : null
+    })
+    
+    // Debug token information
+    try {
+      const authStore = JSON.parse(localStorage.getItem('auth-storage') || '{}')
+      const token = authStore.state?.token
+      console.log('🔐 Auth token available:', !!token)
+      if (token) {
+        console.log('Token prefix:', token.substring(0, 10) + '...')
+      }
+    } catch (e) {
+      console.error('Failed to parse auth token:', e)
+    }
+    
+    const now = Date.now()
+    const timeSinceLastExport = now - lastExportTimeRef.current
+    
+    // Prevent multiple concurrent exports and rapid clicks (within 2 seconds)
+    if (exportCSV.isLoading || exportingRef.current) {
+      console.log('⚠️ Export already in progress, ignoring click')
+      return
+    }
+    
+    if (timeSinceLastExport < 2000) {
+      console.log('⚠️ Export clicked too soon after last export, ignoring click')
+      return
+    }
+    
+    console.log('📤 Starting CSV export...')
+    exportingRef.current = true
+    lastExportTimeRef.current = now
+    
+    // Add a hard timeout to reset the exporting state if the operation takes too long
+    const timeoutId = setTimeout(() => {
+      console.log('⏱️ Export timeout reached, resetting state')
+      exportingRef.current = false
+    }, 30000) // 30 second timeout
+    
+    exportCSV.mutate(undefined, {
+      onSuccess: (data) => {
+        console.log('✅ Export mutation succeeded with data:', data)
+        clearTimeout(timeoutId)
+      },
+      onError: (err) => {
+        console.error('❌ Export mutation failed with error:', err)
+        // Display the specific error for debugging
+        if (err.response) {
+          console.error('Error response:', {
+            status: err.response.status,
+            statusText: err.response.statusText,
+            headers: err.response.headers,
+            data: err.response.data
+          })
+        }
+        clearTimeout(timeoutId)
+      },
+      onSettled: () => {
+        console.log('🏁 Export settled, resetting state')
+        exportingRef.current = false
+        clearTimeout(timeoutId)
+      }
+    })
+  }, [exportCSV])
+  
+  const handleExportPDF = useCallback(() => {
+    console.log('🖱️ Export PDF button clicked')
+    
+    // Prevent multiple concurrent exports
+    if (exportPDF.isLoading) {
+      console.log('⚠️ PDF export already in progress, ignoring click')
+      return
+    }
+    
+    console.log('📄 Starting PDF export...')
+    exportPDF.mutate()
+  }, [exportPDF])
   const { open: openModal } = useUI()
   
   const [searchInput, setSearchInput] = useState(filters.search)
@@ -211,10 +313,44 @@ const Members = () => {
   const handleImport = useCallback((event) => {
     const file = event.target.files[0]
     if (file) {
-      importCSV.mutate(file)
+      console.log('📤 Starting CSV import with file:', file.name, file.size, file.type)
+      
+      // Validate file is a CSV
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        console.error('Invalid file type. Only CSV files are allowed.')
+        // Use an alert since we're in a callback and may not have the toast function
+        alert('Invalid file type. Only CSV files are allowed.')
+        event.target.value = '' // Reset input
+        return
+      }
+      
+      // Log the file object for debugging
+      console.log('File details:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: new Date(file.lastModified).toISOString()
+      })
+      
+      importCSV.mutate(file, {
+        onSuccess: (data) => {
+          console.log('✅ Import completed successfully:', data)
+        },
+        onError: (err) => {
+          console.error('❌ Import failed:', err)
+          if (err.response) {
+            console.error('Error response:', {
+              status: err.response.status,
+              statusText: err.response.statusText,
+              data: err.response.data
+            })
+          }
+        }
+      })
+      
       event.target.value = '' // Reset input
     }
-  }, [importCSV])
+  }, [importCSV, error])
   
   // Memoized utility functions
   const getSortIcon = useCallback((field) => {
@@ -357,17 +493,18 @@ const Members = () => {
                 </Dropdown.Toggle>
                 <Dropdown.Menu>
                   <Dropdown.Item 
-                    onClick={() => exportCSV.mutate()}
+                    onClick={handleExportCSV}
                     disabled={exportCSV.isLoading}
+                    title="Export members as CSV"
                   >
                     {exportCSV.isLoading ? (
-                      <Spinner size="sm" className="me-2" />
+                      <><Spinner size="sm" className="me-2" /> Exporting...</>
                     ) : (
                       <>CSV File</>
                     )}
                   </Dropdown.Item>
                   <Dropdown.Item 
-                    onClick={() => exportPDF.mutate()}
+                    onClick={handleExportPDF}
                     disabled={exportPDF.isLoading}
                   >
                     {exportPDF.isLoading ? (
@@ -379,18 +516,54 @@ const Members = () => {
                 </Dropdown.Menu>
               </Dropdown>
               
-              <Button variant="outline-success" as="label" htmlFor="csv-upload">
-                <FaUpload className="me-2" />
-                Import CSV
-                <input
-                  id="csv-upload"
-                  type="file"
-                  accept=".csv"
-                  onChange={handleImport}
-                  style={{ display: 'none' }}
-                  disabled={importCSV.isLoading}
+              <form 
+                id="csv-upload-form" 
+                method="post" 
+                encType="multipart/form-data" 
+                action="http://localhost:8000/api/users/import"
+                target="csv-upload-frame" // Hidden iframe for the response
+              >
+                <input 
+                  type="hidden" 
+                  name="token" 
+                  value={JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token || 'dev-token-valid'} 
                 />
-              </Button>
+                <Button variant="outline-success" as="label" htmlFor="csv-upload">
+                  <FaUpload className="me-2" />
+                  Import CSV
+                  <input
+                    id="csv-upload"
+                    name="file"
+                    type="file"
+                    accept=".csv"
+                    onChange={(event) => {
+                      if (event.target.files && event.target.files[0]) {
+                        // Auto-submit the form when a file is selected
+                        document.getElementById('csv-upload-form').submit();
+                        // Show a message to the user
+                        alert('Uploading CSV file... The page will refresh automatically when complete.');
+                        
+                        // Set up the iframe to listen for load events to detect when the upload is complete
+                        const iframe = document.querySelector('iframe[name="csv-upload-frame"]');
+                        iframe.onload = () => {
+                          try {
+                            // Wait a moment for the server to process the upload before refreshing
+                            setTimeout(() => {
+                              console.log('CSV upload complete, refreshing page');
+                              window.location.reload();
+                            }, 1000);
+                          } catch (err) {
+                            console.error('Error handling upload completion:', err);
+                          }
+                        };
+                      }
+                    }}
+                    style={{ display: 'none' }}
+                    disabled={importCSV.isLoading}
+                  />
+                </Button>
+                <iframe name="csv-upload-frame" style={{ display: 'none' }}></iframe>
+              </form>
             </ButtonGroup>
           </div>
         </Col>

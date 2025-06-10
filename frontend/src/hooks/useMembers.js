@@ -186,25 +186,147 @@ export const useMemberSelection = () => {
 
 // Hook for CSV import/export
 export const useMemberImportExport = ({ onImportResults } = {}) => {
-  const { success, error } = useToast()
+  const { success: showSuccess, error: showError } = useToast()
   const queryClient = useQueryClient()
   
   const exportCSV = useMutation({
-    mutationFn: () => apiService.exportMembersCSV(),
-    onSuccess: (data) => {
-      // Create download link
-      const blob = new Blob([data], { type: 'text/csv' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `members-${new Date().toISOString().split('T')[0]}.csv`
-      link.click()
-      window.URL.revokeObjectURL(url)
-      success('Members exported successfully!')
+    mutationFn: async () => {
+      console.log('🚀 exportCSV mutation starting...')
+      console.trace('Export CSV call stack')
+      
+      // All authenticated users can export CSV now
+      
+      try {
+        const result = await apiService.exportMembersCSV()
+        console.log('🔍 Export mutation received result:', result)
+        
+        // Validate that we got a proper blob back
+        if (!result || !result.blob || !(result.blob instanceof Blob)) {
+          console.error('❌ Invalid result from API:', result)
+          throw new Error('Invalid response from server')
+        }
+        
+        return result
+      } catch (error) {
+        console.error('❌ Export mutation failed:', error)
+        throw error
+      }
+    },
+    retry: false, // Never retry export mutations to prevent duplicates
+    onMutate: () => {
+      console.log('⏳ exportCSV onMutate - Starting export...')
+    },
+    onSuccess: (result) => {
+      console.log('✅ exportCSV onSuccess - Export completed:', result)
+      
+      try {
+        console.log('🔍 Processing successful export with result:', result)
+        
+        // Only trigger download on successful mutation
+        const { blob, filename } = result
+        
+        if (!blob) {
+          throw new Error('No blob received from server')
+        }
+        
+        console.log('📊 Blob details:', {
+          size: blob.size,
+          type: blob.type,
+          filename: filename
+        })
+        
+        if (blob.size === 0) {
+          throw new Error('Received empty blob from server')
+        }
+        
+        // Create download URL
+        const downloadUrl = window.URL.createObjectURL(blob)
+        console.log('🔗 Download URL created:', downloadUrl)
+        
+        // Check for Safari browser - it needs special handling
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+        console.log('Browser detection - Safari:', isSafari)
+        
+        if (window.navigator && window.navigator.msSaveOrOpenBlob) {
+          // For IE
+          window.navigator.msSaveOrOpenBlob(blob, filename)
+          console.log('📥 Using msSaveOrOpenBlob for download (IE)')
+        } else if (isSafari) {
+          // Safari-specific approach
+          console.log('📱 Using Safari-specific download approach')
+          
+          // Create a unique ID for this download link to ensure we can find it later
+          const downloadId = 'csv-download-' + Date.now()
+          const downloadLink = document.createElement('a')
+          downloadLink.id = downloadId
+          downloadLink.style.display = 'none'
+          downloadLink.href = downloadUrl
+          downloadLink.download = filename
+          
+          // For Safari, we need to make the link visible and use a timeout
+          document.body.appendChild(downloadLink)
+          
+          // Give Safari time to register the blob URL
+          setTimeout(() => {
+            console.log('🖱️ Triggering click on Safari download link')
+            // Set location directly as an alternative approach for Safari
+            if (window.location.origin === 'file://') {
+              // For file:// protocol, fallback to direct navigation
+              window.location.href = downloadUrl
+            } else {
+              // For http/https
+              downloadLink.click()
+            }
+            
+            // Clean up after a longer delay for Safari
+            setTimeout(() => {
+              console.log('🧹 Cleaning up Safari download resources')
+              if (document.body.contains(downloadLink)) {
+                document.body.removeChild(downloadLink)
+              }
+              window.URL.revokeObjectURL(downloadUrl)
+            }, 10000) // Much longer timeout for Safari
+          }, 100)
+        } else {
+          // For other modern browsers
+          // Create an invisible link
+          const downloadLink = document.createElement('a')
+          downloadLink.style.display = 'none'
+          downloadLink.href = downloadUrl
+          downloadLink.download = filename
+          
+          // Add to document, click, then remove
+          console.log('📎 Adding download link to document')
+          document.body.appendChild(downloadLink)
+          
+          console.log('🖱️ Triggering click on download link')
+          downloadLink.click()
+          
+          // Remove link after a short delay
+          setTimeout(() => {
+            console.log('🧹 Cleaning up download resources')
+            if (document.body.contains(downloadLink)) {
+              document.body.removeChild(downloadLink)
+            }
+            window.URL.revokeObjectURL(downloadUrl)
+          }, 5000) // Longer timeout for slower browsers
+        }
+        
+        showSuccess(`CSV exported successfully: ${filename}`)
+      } catch (error) {
+        console.error('Download handling error:', error)
+        showError('Failed to process the export. See console for details.')
+      }
     },
     onError: (err) => {
-      console.error('Failed to export members:', err)
-      error('Failed to export members. Please try again.')
+      console.error('❌ Failed to export members:', err)
+      
+      // More specific error messages based on the error
+      if (err.response && err.response.status === 401) {
+        showError('Export failed: Authentication required. Please log in again.')
+      } else {
+        showError('Failed to export members. Please try again.')
+      }
     }
   })
   
@@ -212,17 +334,26 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
     mutationFn: () => {
       throw new Error('PDF export feature is coming soon!')
     },
+    retry: false, // Never retry export mutations
     onError: (err) => {
       console.error('PDF export not available:', err)
-      error('PDF export feature is coming soon! Please use CSV export for now.')
+      showError('PDF export feature is coming soon! Please use CSV export for now.')
     }
   })
   
   const importCSV = useMutation({
     mutationFn: (file) => apiService.importMembersCSV(file),
-    onSuccess: (data) => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries(['members'])
-      const result = data.data || data
+      console.log('Import CSV response:', response);
+      
+      // For our fetch implementation, the data is directly available or in response.data
+      let result = response;
+      if (response.data) {
+        // Handle both formats - the fetch API response is wrapped to match axios format
+        // response.data could be the response or could contain a data property
+        result = response.data.data || response.data;
+      }
       
       // If callback provided, use it (for modal display)
       if (onImportResults) {
@@ -255,14 +386,14 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
         console.warn('CSV Import errors:', errors)
         
         // Use error toast for better visibility when there are errors
-        error(message, { delay: 10000 }) // Longer delay for errors
+        showError(message, { delay: 10000 }) // Longer delay for errors
       } else {
-        success(message)
+        showSuccess(message)
       }
     },
     onError: (err) => {
       console.error('Failed to import members:', err)
-      error('Failed to import members. Please check your file format and try again.')
+      showError('Failed to import members. Please check your file format and try again.')
     }
   })
   
