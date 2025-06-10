@@ -175,9 +175,10 @@ export const apiService = {
     })
   },
   exportMembersPDF: () => {
-    // For now, we'll just redirect to a simple HTML-to-PDF solution
-    // In the future, this could be a dedicated PDF generation endpoint
-    throw new Error('PDF export not yet implemented')
+    // This function is no longer used since PDF generation is done client-side
+    // We'll keep it for future server-side implementation if needed
+    console.log('exportMembersPDF called - using client-side generation instead')
+    throw new Error('PDF export is handled on the client-side')
   },
 
   // Settings endpoints

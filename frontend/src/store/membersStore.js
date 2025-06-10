@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import useSettingsStore from './settingsStore'
 
 const useMembersStore = create(
   persist(
@@ -246,6 +247,9 @@ const useMembersStore = create(
         const membersList = Array.isArray(members) ? members : []
         return membersList.find(member => member.id === id)
       },
+      
+      // Get settings store for access to club name, etc.
+      getSettingsStore: () => useSettingsStore,
       
       getAssignableMembers: () => {
         const { members } = get()

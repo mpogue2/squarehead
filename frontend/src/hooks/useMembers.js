@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useCallback, useEffect } from 'react'
 import { apiService } from '../services/api'
 import useMembersStore from '../store/membersStore'
+import useSettingsStore from '../store/settingsStore'
 import useUIStore from '../store/uiStore'
 import { useToast } from '../components/ToastProvider'
 
@@ -403,13 +404,285 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
   })
   
   const exportPDF = useMutation({
-    mutationFn: () => {
-      throw new Error('PDF export feature is coming soon!')
+    mutationFn: async () => {
+      console.log('🚀 exportPDF mutation starting...')
+      
+      try {
+        // Get all members with filters applied
+        const members = useMembersStore.getState().getFilteredMembers()
+        console.log(`📊 Generating PDF for ${members.length} members`)
+        
+        // Get club name from settings
+        const clubName = useSettingsStore.getState().getClubName()
+        console.log(`🏢 Using club name: ${clubName}`)
+        
+        // Create a new PDF document
+        const { jsPDF } = await import('jspdf')
+        const doc = new jsPDF({
+          orientation: 'portrait',
+          unit: 'in',
+          format: 'letter' // 8.5 x 11 inches
+        })
+        
+        // Set up document metadata
+        doc.setProperties({
+          title: `${clubName} Members Directory`,
+          subject: 'Square Dance Club Members',
+          creator: 'Squarehead',
+          keywords: 'members, directory, export'
+        })
+        
+        // Page dimensions
+        const pageWidth = 8.5
+        const pageHeight = 11
+        const margin = 0.5
+        const usableWidth = pageWidth - (margin * 2)
+        
+        // Add title
+        doc.setFontSize(18)
+        doc.text(`${clubName} Members Directory`, pageWidth / 2, margin, { align: 'center' })
+        
+        // Add current date
+        const today = new Date().toLocaleDateString()
+        doc.setFontSize(10)
+        doc.text(`Generated: ${today}`, pageWidth / 2, margin + 0.3, { align: 'center' })
+        
+        // Set up table
+        doc.setFontSize(9)
+        doc.setLineWidth(0.01)
+        
+        // Define columns with widths that fill the page
+        const columns = [
+          { header: 'First Name', width: usableWidth * 0.15 },
+          { header: 'Last Name', width: usableWidth * 0.15 },
+          { header: 'Email', width: usableWidth * 0.25 },
+          { header: 'Phone', width: usableWidth * 0.15 },
+          { header: 'Status', width: usableWidth * 0.1 },
+          { header: 'Role', width: usableWidth * 0.1 },
+          { header: 'Birthday', width: usableWidth * 0.1 }
+        ]
+        
+        // Starting position
+        let y = margin + 0.7
+        const rowHeight = 0.25
+        
+        // Draw header row
+        let x = margin
+        // Header background
+        doc.setFillColor(240, 240, 240)
+        doc.rect(margin, y, usableWidth, rowHeight, 'F')
+        
+        // Header text
+        doc.setFont(undefined, 'bold')
+        columns.forEach(column => {
+          doc.text(column.header, x + 0.1, y + (rowHeight / 2) + 0.03)
+          x += column.width
+        })
+        doc.setFont(undefined, 'normal')
+        
+        y += rowHeight
+        
+        // Draw rows for each member
+        let pageCount = 1
+        
+        for (let i = 0; i < members.length; i++) {
+          const member = members[i]
+          
+          // Check if we need a new page
+          if (y > pageHeight - margin) {
+            // Add page number
+            doc.setFontSize(8)
+            doc.text(`Page ${pageCount}`, pageWidth / 2, pageHeight - 0.3, { align: 'center' })
+            
+            // Add new page
+            doc.addPage()
+            pageCount++
+            y = margin
+            
+            // Redraw header on new page
+            x = margin
+            doc.setFillColor(240, 240, 240)
+            doc.rect(margin, y, usableWidth, rowHeight, 'F')
+            
+            doc.setFontSize(9)
+            doc.setFont(undefined, 'bold')
+            columns.forEach(column => {
+              doc.text(column.header, x + 0.1, y + (rowHeight / 2) + 0.03)
+              x += column.width
+            })
+            doc.setFont(undefined, 'normal')
+            
+            y += rowHeight
+          }
+          
+          // Draw row
+          x = margin
+          
+          // Alternate row background for readability
+          if (i % 2 === 0) {
+            doc.setFillColor(252, 252, 252)
+            doc.rect(margin, y, usableWidth, rowHeight, 'F')
+          }
+          
+          // Add member data
+          const statusText = member.status.charAt(0).toUpperCase() + member.status.slice(1)
+          const roleText = member.is_admin ? 'Admin' : 'Member'
+          
+          // First Name
+          doc.text(member.first_name || '', x + 0.1, y + (rowHeight / 2) + 0.03)
+          x += columns[0].width
+          
+          // Last Name
+          doc.text(member.last_name || '', x + 0.1, y + (rowHeight / 2) + 0.03)
+          x += columns[1].width
+          
+          // Email
+          doc.text(member.email || '', x + 0.1, y + (rowHeight / 2) + 0.03)
+          x += columns[2].width
+          
+          // Phone
+          doc.text(member.phone || '', x + 0.1, y + (rowHeight / 2) + 0.03)
+          x += columns[3].width
+          
+          // Status
+          doc.text(statusText, x + 0.1, y + (rowHeight / 2) + 0.03)
+          x += columns[4].width
+          
+          // Role
+          doc.text(roleText, x + 0.1, y + (rowHeight / 2) + 0.03)
+          x += columns[5].width
+          
+          // Birthday
+          doc.text(member.birthday || '', x + 0.1, y + (rowHeight / 2) + 0.03)
+          
+          y += rowHeight
+        }
+        
+        // Add page number to the last page
+        doc.setFontSize(8)
+        doc.text(`Page ${pageCount}`, pageWidth / 2, pageHeight - 0.3, { align: 'center' })
+        
+        // Generate the PDF
+        const pdfBlob = doc.output('blob')
+        
+        return {
+          blob: pdfBlob,
+          filename: `members-directory-${new Date().toISOString().split('T')[0]}.pdf`
+        }
+      } catch (error) {
+        console.error('❌ PDF generation failed:', error)
+        throw error
+      }
     },
     retry: false, // Never retry export mutations
+    onMutate: () => {
+      console.log('⏳ exportPDF onMutate - Starting export...')
+    },
+    onSuccess: (result) => {
+      console.log('✅ exportPDF onSuccess - Export completed:', result)
+      
+      try {
+        console.log('🔍 Processing successful PDF export with result:', result)
+        
+        // Only trigger download on successful mutation
+        const { blob, filename } = result
+        
+        if (!blob) {
+          throw new Error('No blob received from PDF generation')
+        }
+        
+        console.log('📊 Blob details:', {
+          size: blob.size,
+          type: blob.type,
+          filename: filename
+        })
+        
+        if (blob.size === 0) {
+          throw new Error('Received empty blob from PDF generation')
+        }
+        
+        // Create download URL
+        const downloadUrl = window.URL.createObjectURL(blob)
+        console.log('🔗 Download URL created:', downloadUrl)
+        
+        // Check for Safari browser - it needs special handling
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+        console.log('Browser detection - Safari:', isSafari)
+        
+        if (window.navigator && window.navigator.msSaveOrOpenBlob) {
+          // For IE
+          window.navigator.msSaveOrOpenBlob(blob, filename)
+          console.log('📥 Using msSaveOrOpenBlob for download (IE)')
+        } else if (isSafari) {
+          // Safari-specific approach
+          console.log('📱 Using Safari-specific download approach')
+          
+          // Create a unique ID for this download link to ensure we can find it later
+          const downloadId = 'pdf-download-' + Date.now()
+          const downloadLink = document.createElement('a')
+          downloadLink.id = downloadId
+          downloadLink.style.display = 'none'
+          downloadLink.href = downloadUrl
+          downloadLink.download = filename
+          
+          // For Safari, we need to make the link visible and use a timeout
+          document.body.appendChild(downloadLink)
+          
+          // Give Safari time to register the blob URL
+          setTimeout(() => {
+            console.log('🖱️ Triggering click on Safari download link')
+            // Set location directly as an alternative approach for Safari
+            if (window.location.origin === 'file://') {
+              // For file:// protocol, fallback to direct navigation
+              window.location.href = downloadUrl
+            } else {
+              // For http/https
+              downloadLink.click()
+            }
+            
+            // Clean up after a longer delay for Safari
+            setTimeout(() => {
+              console.log('🧹 Cleaning up Safari download resources')
+              if (document.body.contains(downloadLink)) {
+                document.body.removeChild(downloadLink)
+              }
+              window.URL.revokeObjectURL(downloadUrl)
+            }, 10000) // Much longer timeout for Safari
+          }, 100)
+        } else {
+          // For other modern browsers
+          // Create an invisible link
+          const downloadLink = document.createElement('a')
+          downloadLink.style.display = 'none'
+          downloadLink.href = downloadUrl
+          downloadLink.download = filename
+          
+          // Add to document, click, then remove
+          console.log('📎 Adding download link to document')
+          document.body.appendChild(downloadLink)
+          
+          console.log('🖱️ Triggering click on download link')
+          downloadLink.click()
+          
+          // Remove link after a short delay
+          setTimeout(() => {
+            console.log('🧹 Cleaning up download resources')
+            if (document.body.contains(downloadLink)) {
+              document.body.removeChild(downloadLink)
+            }
+            window.URL.revokeObjectURL(downloadUrl)
+          }, 5000) // Longer timeout for slower browsers
+        }
+        
+        showSuccess(`PDF exported successfully: ${filename}`)
+      } catch (error) {
+        console.error('Download handling error:', error)
+        showError('Failed to process the PDF export. See console for details.')
+      }
+    },
     onError: (err) => {
-      console.error('PDF export not available:', err)
-      showError('PDF export feature is coming soon! Please use CSV export for now.')
+      console.error('❌ Failed to export PDF:', err)
+      showError('Failed to generate PDF. Please try again.')
     }
   })
   
