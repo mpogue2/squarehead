@@ -1,0 +1,86 @@
+Project goals: /Users/mpogue/squarehead/squareheadWebsiteGoals.txt 
+Step-by-step plan: /Users/mpogue/squarehead/stepByStep.txt 
+Progress so far: /Users/mpogue/squarehead/docs
+
+There is a development login bypass using a token that is good for a year:
+
+http://localhost:5181/members?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJpYXQiOjE3NDk0NDkxNDMsImV4cCI6MTc4MDk4NTE0MywidXNlcl9pZCI6MSwiZW1haWwiOiJtcG9ndWVAemVuc3RhcnN0dWRpby5jb20iLCJpc19hZG1pbiI6dHJ1ZSwicm9sZSI6ImFkbWluIiwiZGV2X2xvbmdfbGl2ZWQiOnRydWV9.QY8waozaVqtjjhKDM3rj1751xI-vw5ypz6Tje_U6fBI
+
+# Frontend (React + Vite)
+http://localhost:5181
+
+# Backend (PHP + Slim)  
+http://localhost:8000
+
+Check to make sure that there is only one PHP web server and one VITE server running, and then use the login bypass above to log me in.
+
+Use the shell script restartServers.sh to initialize the PHP web server and the Vite server.
+
+=================
+Check both frontend and backend ports: we frequently get a CORS error that shows that the backend is configured to allow http://localhost:5177 (some port number) but the frontend is running on http://localhost:5178 (a different port). Test for this first and fix the CORS configuration if necessary.
+
+====================================================================
+1) The placeholder text in the text fields needs to be color = #636c72, not a dark color like black.
+
+2) Add a "Show Password" checkbox just below the password-protected fields: Google API Key and SMTP password.  When checked, the password is shown in plain text, otherwise the password appears as dots.
+
+3) The Google API Key stored in the database is correct, so the Map page is working, BUT the key isn't shown in the Admin page (the placeholder text is being shown in the Google API key field instead).
+
+4) The Login email uses a title of literally "Squarehead Reminder - Rockin' Jokers Dance on {dance_date}".  It should instead use a title of "{club_name} Management System - Login", and the "{club_name}" should be expanded to (in this example) "Rockin' Jokers", as per the Admin page setting for {club_name}.
+
+5) The Login email should use a larger font size for everything, to make the Login email more readable.
+
+6) Admin page: Allow Markdown-style links in the email template.
+  Format: [Link text Here](https://link-url-here.org)
+
+  Then test with this in a reminder email:
+
+  "Duty square instructions are online [here](https://rockinjokers.com/Documents/202503%20Rockin%20Jokers%20Duty%20Square%20Instructions.pdf)"
+
+7) Make me a Members CSV file with 100 fake rows that I can use for testing CSV upload.  Addresses should be around San Jose CA. Provide a button on the Admin page for admins (only) to clear out all rows of the existing Member table.
+
+8) Map page: Jitter the location of the stars, for stars that are right on top of each other (have the same address).
+
+STEP 7.5: In the Admin page, when the dance location changes, lookup its latLong, and save and cache it somewhere (so it doesn't have to be looked up each time).  Display the latLong in two uneditable fields in the admin page, when it is known.
+
+STEP 7.6: Cache the latLong's for each of the member's addresses (so they don't have to be looked up each time).  The cache must be updated whenever any member's address changes.  The latLongs do not need to be displayed anywhere.
+
+STEP 7.7: Cache the latLong's for the dance hall location (so it doesn't have to be looked up each time).  The cache must be updated whenever the dance hall location is changed.
+
+----------------
+9) Add an email address to the Admin page called "Squareheads Leader".  
+  Do we want the outgoing email to bcc: the Leader?  cc:?
+  Do we want the outgoing email to come from the leader, so that the members
+  can just "Reply All"?  (Maybe cc: does this...)
+
+10) Birthday field (just month/day), sortable.
+
+11) Instead of a LINK to the logo, the logo should be uploadable (square aspect ration, JPG or PNG), 
+  and then cached as a Setting.
+
+12) Add an LOA date field for each member.  When a member goes on LOA, and their status is "LOA", this field will contain the last known date that they will be out (month/day/year).  Set this with a calendar widget.  It's OK if this field is blank, which means "indefinite LOA".  Do not automatically take them off of LOA at the end of their LOA (we'll do that manually).
+
+13) Members page: make the PDF export button work.  Output should be a professional-quality table of member data, in portrait format, suitable for printing.  The PDF output should use the full width of an 8.5x11" sheet of paper, and it can be more than 1 page long (and should be paginated accordingly).
+
+14) Assigning a second squarehead who is not a partner generates a warning, and is not an error
+
+15) Admin page: Add "Alternate Location 1" and "Alternate Location 2" locations, 
+    e.g. Santa Theresa Branch Library (plot as small red square), Communication Park Branch Library (plot as small red triangle).  
+
+16) On the current schedule page, make an Export to Clipboard: put this in the following format (suitable for pasting into the MS Word schedule).  Note the Fifth Wednesdays should automatically use the string "The RJ Board for 5TH Wednesday!".
+
+  Jun 4: Doug Caulfield, Bev Kuhar, Art & Sandy Bruns
+  Jun 11: Jasmine & Ken Bucan, Mike Berry, Vic Oros
+  Jun 18: Edna Eng & Art Carlson, Parker Wiley, Sandy Franger
+  Jun 25: Annette Gurich, Sharon Roper, Dave & Susan Cremins
+   
+  Jul 2: Greg & Janet Shaw, David Prier, Kathy Schaefer
+  Jul 9: Sue & Jed Cyr, Pam Nickels, Alice McManus
+  Jul 16: Will Silva, Louise Deal, Jackie Daemion, Karl Belser
+  Jul 23: Donna & Scott Lawrence, Bev Kuhar, Joanne Jones
+  Jul 30: The RJ Board for 5TH Wednesday!
+    
+17) There needs to be 4 people (not 2) who are Squareheads for a given date.
+
+18) The date columns should be mm/dd/yyyy, rather than "Jun 3, 2025", to save space.
+

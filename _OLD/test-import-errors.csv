@@ -1,0 +1,7 @@
+first_name,last_name,email,status,role
+Test1,User1,test1@email.com,assignable,member
+,User2,test2@email.com,assignable,member
+Test3,,test3@email.com,assignable,member
+Test4,User4,,assignable,member
+Test5,User5,invalid-email,assignable,member
+Test6,User6,test6@email.com,assignable,member

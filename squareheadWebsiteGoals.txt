@@ -1,0 +1,7 @@
+Task: Create a single page responsive web application that will look professional on both a laptop screen and a mobile phone screen.  The backend will be PHP and MariaDB.  This application will manage the roster and duty assignments for a Square Dance club. These assignments rotate from week to week, and this web application sends out periodic reminders via email to the dancers assigned as squareheads for each dance.
+
+Details:
+- for development, we are using SQLITE running locally
+- we have implemented most of the old step by step plan, and now we are working on individual items that are in the new step by step plan.
+
+

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Setup Dev Auth</title>
+</head>
+<body>
+    <h1>Setting up development authentication...</h1>
+    <p id="status">Initializing...</p>
+    
+    <script>
+        // Clear existing storage
+        localStorage.clear();
+        
+        // Set up authentication data  
+        const authData = {
+            state: {
+                isAuthenticated: true,
+                user: {
+                    id: 1,
+                    email: "mpogue@zenstarstudio.com", 
+                    first_name: "Mike",
+                    last_name: "Pogue",
+                    role: "admin",
+                    is_admin: true
+                },
+                token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJpYXQiOjE3NDk0MzMzMjgsImV4cCI6MTc0OTQzNjkyOCwidXNlcl9pZCI6MSwiZW1haWwiOiJtcG9ndWVAemVuc3RhcnN0dWRpby5jb20iLCJpc19hZG1pbiI6dHJ1ZSwicm9sZSI6ImFkbWluIn0.CXCUZ-MVGuRni2qLu51UKYp_t2qyVh5i-QjHJMPeCBc",
+                _hasHydrated: true
+            },
+            version: 0
+        };
+        
+        localStorage.setItem('auth-storage', JSON.stringify(authData));
+        
+        // Set up UI store
+        const uiData = {
+            state: {
+                modals: {},
+                loading: {},
+                errors: [],
+                notifications: [],
+                theme: 'light', 
+                sidebarOpen: false
+            },
+            version: 0
+        };
+        localStorage.setItem('ui-storage', JSON.stringify(uiData));
+        
+        // Set up members store
+        const membersData = {
+            state: {
+                filters: {
+                    search: '',
+                    status: 'all',
+                    role: 'all'
+                },
+                sortBy: {
+                    field: 'last_name',
+                    direction: 'asc'
+                }
+            },
+            version: 0
+        };
+        localStorage.setItem('members-storage', JSON.stringify(membersData));
+        
+        document.getElementById('status').textContent = 'Authentication setup complete!';
+        
+        console.log('Dev auth setup complete');
+        console.log('Auth data:', JSON.parse(localStorage.getItem('auth-storage')));
+        
+        // Redirect after short delay
+        setTimeout(() => {
+            window.location.href = 'http://localhost:5177/members';
+        }, 1000);
+    </script>
+</body>
+</html>

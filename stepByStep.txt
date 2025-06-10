@@ -1,0 +1,134 @@
+SQUARE DANCE CLUB MANAGEMENT WEBSITE - STEP-BY-STEP IMPLEMENTATION PLAN
+==============================================================================
+
+SUMMARY:
+- We are creating a single page responsive web application that will look professional on both a laptop screen and a mobile phone screen.  
+- The backend will be PHP and MariaDB.  
+- This application will manage the roster and duty assignments for a Square Dance club. 
+- These assignments rotate from week to week, and this web application sends out periodic reminders via email to the dancers assigned as squareheads for each dance.
+
+PROJECT OVERVIEW:
+- Single Page Application (SPA) using React
+- PHP REST API backend with MariaDB
+- All code self-contained in /Users/mpogue/squarehead/ folder
+- Incremental development with testing at each step
+
+TECHNOLOGY STACK:
+- Frontend: React 18, React Router 6, Zustand, React Query, React Bootstrap
+- Backend: PHP 8.1+, Slim Framework, MariaDB, PHPMailer, JWT
+- Build Tools: Vite for frontend, Composer for backend
+
+PROJECT STRUCTURE:
+/Users/mpogue/squarehead/
+  /frontend/          (React SPA)
+  /backend/           (PHP API)
+  /docs/              (Documentation)
+  /tests/             (Test files)
+
+LOCAL SERVERS:
+# Frontend (React + Vite)
+http://localhost:5181
+
+# Backend (PHP + Slim)  
+http://localhost:8000
+
+TESTING:
+There is a development login bypass using a token that is good for a year.  We will use this URL for testing:
+
+http://localhost:5181/members?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJpYXQiOjE3NDk0NDkxNDMsImV4cCI6MTc4MDk4NTE0MywidXNlcl9pZCI6MSwiZW1haWwiOiJtcG9ndWVAemVuc3RhcnN0dWRpby5jb20iLCJpc19hZG1pbiI6dHJ1ZSwicm9sZSI6ImFkbWluIiwiZGV2X2xvbmdfbGl2ZWQiOnRydWV9.QY8waozaVqtjjhKDM3rj1751xI-vw5ypz6Tje_U6fBI
+
+CURRENT STATUS: 
+- The previous list of PHASES that we had created was completed.  
+- Progress so far is documented here (do not read this, unless necessary): /Users/mpogue/squarehead/docs
+- Any unfinished tasks from those phases are now shown in the list that is below, starting with PHASE 10.
+- This is the sole list of remaining tasks.
+- We will be completing the tasks below one at a time, and not in the order shown below.
+- I will specify which tasks to work on, and in which order.
+
+==============
+REMAINING PHASES:
+
+=====================
+10. INFRASTRUCTURE:
+
+10.1) Cron Job Endpoint
+- Create /api/cron/reminders endpoint
+- Logic to check reminder days and send emails
+- Logging and error handling for email delivery
+
+=====================
+11. MAP PAGE 
+
+11.1) MAP page: Duplicated addresses must jitter the star locations, so that all stars will be at least partially visible.
+
+11.2) MAP page: Cache the latLong's for each of the member's addresses on the Member's page (so they don't have to be looked up each time).  The cache must be updated whenever any member's address changes.  The latLongs do not need to be displayed anywhere.
+
+DONE 11.3) Map page: Cache the latLong's for the dance hall location (so it doesn't have to be looked up each time).  The cache must be updated whenever the dance hall location is changed.
+
+=====================
+12. ADMIN PAGE
+
+DONE 12.1) Admin page: when the dance location changes, lookup its latLong, and save and cache it somewhere (so it doesn't have to be looked up each time).  Display the latLong in two uneditable fields in the admin page, when it is known.  The latLong must be updated when the club address changes.
+
+DONE 12.2) Admin page: The placeholder text in the text fields needs to be color = #636c72, not a dark color like black.
+
+DONE 12.3) Admin page: for those fields that are password fields, provide an "eye" or "reveal" icon in the field on the right hand side.  Clicking on it makes the plain text visible.  Clicking again makes the text into dots.
+
+DONE 12.4) Admin page: The Google API Key stored in the database is correct, so the Map page is working, BUT the key isn't shown in the Admin page (the placeholder text is being shown in the Google API key field instead).
+
+DONE 12.5) Admin page: Allow Markdown-style links in the email template.
+  Format: [Link text Here](https://link-url-here.org)
+
+  Then test with this in a reminder email:
+
+  "Duty square instructions are online [here](https://rockinjokers.com/Documents/202503%20Rockin%20Jokers%20Duty%20Square%20Instructions.pdf)"
+
+12.6) Admin page: Instead of a LINK to the logo, the logo should be uploadable (square aspect ration, JPG or PNG), 
+  and then cached as a Setting.
+
+12.7) Admin page: Add "Alternate Location 1" and "Alternate Location 2" locations, 
+    e.g. Santa Theresa Branch Library (plot as small red square), Communication Park Branch Library (plot as small red triangle).  
+
+
+=====================
+13. LOGIN EMAIL
+
+DONE 13.1) Login email: The Login email should use a larger font size for everything, to make the Login email more readable.
+
+DONE 13.2) Login email: The Login email uses a title of literally "Squarehead Reminder - Rockin' Jokers Dance on {dance_date}".  It should instead use a title of "{club_name} Management System - Login", and the "{club_name}" should be expanded to (in this example) "Rockin' Jokers", as per the Admin page setting for {club_name}.
+
+
+=====================
+14. MEMBERS PAGE
+
+14.1) Testing CSV Upload on Members page: Make me a Members CSV file with 100 fake rows that I can use for testing CSV upload.  Addresses should be around San Jose CA. Provide a button on the Admin page for admins (only) to clear out all rows of the existing Member table.
+
+14.2) Members page: Add a Birthday field (just month/day), sortable.
+
+14.3) Members page: Add an LOA date field for each member.  When a member goes on LOA, and their status is "LOA", this field will contain the last known date that they will be out (month/day/year).  Set this with a calendar widget.  It's OK if this field is blank, which means "indefinite LOA".  Do not automatically take them off of LOA at the end of their LOA (we'll do that manually).
+
+14.4) Members page: make the PDF export button work.  Output should be a professional-quality table of member data, in portrait format, suitable for printing.  The PDF output should use the full width of an 8.5x11" sheet of paper, and it can be more than 1 page long (and should be paginated accordingly).
+
+=====================
+15. NEXT/CURRENT SCHEDULE PAGES
+
+15.0) Next/Current Schedule pages: Assigning a second squarehead who is not a partner generates a warning, and is not an error
+
+15.1) Current Schedule page: make an Export to Clipboard button or clickable link: put this in the following format (suitable for pasting into the MS Word schedule).  Note the Fifth Wednesdays should automatically use the string "The RJ Board for 5TH Wednesday!".
+
+  Jun 4: Doug Caulfield, Bev Kuhar, Art & Sandy Bruns
+  Jun 11: Jasmine & Ken Bucan, Mike Berry, Vic Oros
+  Jun 18: Edna Eng & Art Carlson, Parker Wiley, Sandy Franger
+  Jun 25: Annette Gurich, Sharon Roper, Dave & Susan Cremins
+   
+  Jul 2: Greg & Janet Shaw, David Prier, Kathy Schaefer
+  Jul 9: Sue & Jed Cyr, Pam Nickels, Alice McManus
+  Jul 16: Will Silva, Louise Deal, Jackie Daemion, Karl Belser
+  Jul 23: Donna & Scott Lawrence, Bev Kuhar, Joanne Jones
+  Jul 30: The RJ Board for 5TH Wednesday!
+    
+15.2) Current/Next Schedule pages: There needs to be 4 people (not 2) who are Squareheads for each given date.
+
+15.3) Current/Next Schedule pages: The date columns should be mm/dd/yyyy, rather than "Jun 3, 2025", to save space.
+
+15.4) Next Schedule Page: When creating a row for a dance, dates that are the 5th Wednesdays of a month should automatically set the Club Night field to: "Fifth Wednesday".  A simple way of determining this is if the day part of the date is 29 or greater.

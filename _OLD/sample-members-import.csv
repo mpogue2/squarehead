@@ -1,0 +1,6 @@
+first_name,last_name,email,phone,address,role,status
+John,Sample,john.sample@email.com,555-0001,123 Main St San Jose CA 95120,member,assignable
+Jane,Example,jane.example@email.com,555-0002,456 Oak Ave San Jose CA 95121,member,assignable
+Bob,Test,bob.test@email.com,555-0003,789 Pine St San Jose CA 95122,member,exempt
+Alice,Demo,alice.demo@email.com,,321 Elm Dr San Jose CA 95123,member,booster
+Charlie,Support,charlie.support@email.com,555-0005,,member,loa

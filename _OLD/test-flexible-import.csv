@@ -1,0 +1,5 @@
+status,email,extra_column,last_name,role,first_name,phone,random_field,address
+ASSIGNABLE,test1@email.com,ignored_data,TestUser1,MEMBER,Test1,555-1001,more_ignored,123 Test St
+exempt,test2@email.com,another_column,TestUser2,admin,Test2,,yet_more,456 Test Ave
+Booster,test3@email.com,,TestUser3,Member,Test3,555-1003,,789 Test Blvd
+LOA,test4@email.com,extra_info,TestUser4,,Test4,555-1004,random_value,321 Test Dr

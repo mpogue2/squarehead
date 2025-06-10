@@ -1,0 +1,4 @@
+last_name,email,first_name,status,role,extra_data
+,invalid-email,Test5,assignable,member,ignored
+TestUser6,,Test6,assignable,member,ignored
+TestUser7,test7@email.com,,assignable,member,ignored

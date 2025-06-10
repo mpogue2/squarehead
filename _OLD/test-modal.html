@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Modal Issue</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- React and ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel Standalone for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        // Simple Modal Component to test the issue
+        function MemberEditModal({ show, onHide }) {
+            if (!show) return null;
+            
+            return (
+                <div className="modal fade show" style={{display: 'block'}} tabIndex="-1">
+                    <div className="modal-dialog modal-lg">
+                        <div className="modal-content">
+                            <div className="modal-header">
+                                <h5 className="modal-title">Add New Member</h5>
+                                <button type="button" className="btn-close" onClick={onHide}></button>
+                            </div>
+                            <div className="modal-body">
+                                <div className="row">
+                                    <div className="col-md-6">
+                                        <div className="mb-3">
+                                            <label className="form-label">First Name *</label>
+                                            <input type="text" className="form-control" placeholder="Enter first name" />
+                                        </div>
+                                        <div className="mb-3">
+                                            <label className="form-label">Last Name *</label>
+                                            <input type="text" className="form-control" placeholder="Enter last name" />
+                                        </div>
+                                        <div className="mb-3">
+                                            <label className="form-label">Email Address *</label>
+                                            <input type="email" className="form-control" placeholder="Enter email address" />
+                                        </div>
+                                    </div>
+                                    <div className="col-md-6">
+                                        <div className="mb-3">
+                                            <label className="form-label">Phone Number</label>
+                                            <input type="tel" className="form-control" placeholder="Enter phone number" />
+                                        </div>
+                                        <div className="mb-3">
+                                            <label className="form-label">Address</label>
+                                            <textarea className="form-control" rows="2" placeholder="Enter address"></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="modal-footer">
+                                <button type="button" className="btn btn-secondary" onClick={onHide}>Cancel</button>
+                                <button type="button" className="btn btn-primary">Create Member</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Members Page Component
+        function MembersPage() {
+            const [showModal, setShowModal] = useState(false);
+            
+            const handleAddMember = () => {
+                console.log('Add Member button clicked!');
+                console.log('Setting showModal to true');
+                setShowModal(true);
+                console.log('Modal should be opened, showModal:', true);
+            };
+            
+            const handleCloseModal = () => {
+                console.log('Closing modal');
+                setShowModal(false);
+            };
+            
+            return (
+                <div className="container mt-4">
+                    <h1>Members</h1>
+                    
+                    {/* Add Member Button */}
+                    <div className="mb-4">
+                        <button className="btn btn-primary" onClick={handleAddMember}>
+                            Add Member
+                        </button>
+                    </div>
+                    
+                    {/* Mock Members Table */}
+                    <div className="card">
+                        <div className="card-body">
+                            <table className="table">
+                                <thead>
+                                    <tr>
+                                        <th>First Name</th>
+                                        <th>Last Name</th>
+                                        <th>Email</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Test</td>
+                                        <td>User</td>
+                                        <td>test@example.com</td>
+                                        <td>
+                                            <button className="btn btn-sm btn-outline-primary me-2">Edit</button>
+                                            <button className="btn btn-sm btn-outline-danger">Delete</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    {/* Member Edit Modal */}
+                    <MemberEditModal 
+                        show={showModal} 
+                        onHide={handleCloseModal} 
+                    />
+                    
+                    {/* Modal backdrop */}
+                    {showModal && <div className="modal-backdrop fade show"></div>}
+                    
+                    {/* Debug info */}
+                    <div className="mt-4 p-3 bg-light">
+                        <h6>Debug Info:</h6>
+                        <p>Modal State: <strong>{showModal ? 'SHOWN' : 'HIDDEN'}</strong></p>
+                        <p>Click the "Add Member" button above to test the modal.</p>
+                    </div>
+                </div>
+            );
+        }
+
+        // Render the app
+        ReactDOM.render(<MembersPage />, document.getElementById('root'));
+    </script>
+</body>
+</html>
