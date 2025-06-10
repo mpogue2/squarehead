@@ -1,0 +1,44 @@
+# Squarehead Deployment Readiness Plan
+
+Below are the steps needed to make the project ready for deployment to a PHP/MariaDB web server environment:
+
+1. BUILD THE FRONTEND
+   - Run `npm run build` in the frontend directory to create production-optimized static files
+   - The build output will be in the `frontend/dist` directory
+
+2. CONFIGURE API BASE URLS
+   - Update `frontend/src/services/api.js` to use relative URLs or a configurable base URL instead of hardcoded `http://localhost:8000`
+   - Remove development-specific code (like line 94 with 'dev-token-valid')
+
+3. SET UP ENVIRONMENT VARIABLES
+   - Create a `.env` file for the PHP backend with necessary configuration:
+     - Database connection details (host, username, password, database name)
+     - JWT secret key
+     - SMTP email settings
+     - Any API keys (for geocoding service)
+
+4. DATABASE SETUP
+   - Run the main `schema.sql` script to create database tables on MariaDB
+   - Apply all migration scripts (`001_add_booster_loa_status.sql`, etc.) by uncommenting the MariaDB sections
+   - Import any necessary sample data if needed
+
+5. CONFIGURE WEB SERVER
+   - Set up URL rewriting (Apache .htaccess or nginx config) to route API requests to the backend
+   - Configure the web server to serve the frontend static files
+   - Ensure the `backend/public` directory is set as the document root for PHP execution
+
+6. DEPLOY FILES
+   - Upload frontend build files to the web server
+   - Upload backend PHP files to the web server
+   - Ensure proper file permissions
+
+7. CORS CONFIGURATION
+   - Update CORS headers in `backend/public/index.php` to match the production domain
+
+8. UPDATE FRONTEND ROUTES
+   - Check for any hardcoded URLs in the frontend code that need to be relative paths
+
+9. TEST DEPLOYMENT
+   - Verify all API endpoints work correctly
+   - Test authentication flow
+   - Validate database connections
