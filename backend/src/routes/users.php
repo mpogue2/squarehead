@@ -307,7 +307,7 @@ $app->get('/api/users/export/csv', function (Request $request, Response $respons
                 '"' . str_replace('"', '""', $user['phone'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['address'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['is_admin'] ? 'admin' : 'member') . '"',
-                '"' . str_replace('"', '""', $user['status']) . '"',
+                '"' . str_replace('"', '""', $user['status'] === 'loa' ? 'LOA' : $user['status']) . '"',
                 '"' . str_replace('"', '""', $user['birthday'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['partner_first_name'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['partner_last_name'] ?: '') . '"',

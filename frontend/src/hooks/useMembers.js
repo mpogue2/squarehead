@@ -525,7 +525,9 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
           }
           
           // Add member data
-          const statusText = member.status.charAt(0).toUpperCase() + member.status.slice(1)
+          // For 'loa' status, use all uppercase "LOA", otherwise capitalize first letter
+          const statusText = member.status === 'loa' ? 'LOA' : 
+                             member.status.charAt(0).toUpperCase() + member.status.slice(1)
           const roleText = member.is_admin ? 'Admin' : 'Member'
           
           // First Name
