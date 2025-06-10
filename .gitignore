@@ -116,3 +116,6 @@ dist
 tmp/
 temp/
 **/.claude/settings.local.json
+
+# Ignore everything in the _OLD directory
+_OLD/
