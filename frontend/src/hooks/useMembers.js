@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMemo, useCallback, useEffect } from 'react'
 import { apiService } from '../services/api'
 import useMembersStore from '../store/membersStore'
 import useUIStore from '../store/uiStore'
@@ -89,15 +89,27 @@ export const useUpdateMember = () => {
   const { success, error } = useToast()
   
   return useMutation({
-    mutationFn: ({ id, ...updates }) => apiService.updateUser(id, updates),
+    mutationFn: ({ id, ...updates }) => {
+      console.log('Calling API to update user ID:', id, 'with data:', updates);
+      return apiService.updateUser(id, updates);
+    },
     onSuccess: (data, variables) => {
+      console.log('Update member API success:', data);
       const member = data.data || data
+      console.log('Member data being stored:', member);
       updateMember(variables.id, member)
       queryClient.invalidateQueries(['members'])
       success('Member updated successfully!')
     },
     onError: (err) => {
       console.error('Failed to update member:', err)
+      if (err.response) {
+        console.error('API Error Response:', err.response.status, err.response.data);
+      } else if (err.request) {
+        console.error('No response received', err.request);
+      } else {
+        console.error('Error creating request', err.message);
+      }
       error('Failed to update member. Please try again.')
     }
   })
@@ -127,14 +139,19 @@ export const useDeleteMember = () => {
 export const useMemberFilters = () => {
   const filters = useMembersStore((state) => state.filters)
   const members = useMembersStore((state) => state.members)
+  const sortBy = useMembersStore((state) => state.sortBy) // Get sortBy to trigger rerenders
   const setFilters = useMembersStore((state) => state.setFilters)
   const clearFilters = useMembersStore((state) => state.clearFilters)
   const getFilteredMembers = useMembersStore((state) => state.getFilteredMembers)
   
-  // Memoize the filtered members based on members and filters
+  // Log when this hook re-renders
+  console.log('useMemberFilters hook running with sortBy:', sortBy);
+  
+  // Memoize the filtered members based on members, filters, and sortBy
   const filteredMembers = useMemo(() => {
-    return getFilteredMembers()
-  }, [getFilteredMembers, members, filters])
+    console.log('Recalculating filteredMembers with sortBy:', sortBy);
+    return getFilteredMembers();
+  }, [getFilteredMembers, members, filters, sortBy]) // Include sortBy in dependencies
   
   const setSearch = useMemo(() => (search) => setFilters({ search }), [setFilters])
   const setStatusFilter = useMemo(() => (status) => setFilters({ status }), [setFilters])
@@ -155,12 +172,40 @@ export const useMemberFilters = () => {
 export const useMemberSorting = () => {
   const sortBy = useMembersStore((state) => state.sortBy)
   const setSortBy = useMembersStore((state) => state.setSortBy)
+  const queryClient = useQueryClient()
   
-  const toggleSort = useMemo(() => (field) => {
-    const currentSortBy = useMembersStore.getState().sortBy
-    const direction = currentSortBy.field === field && currentSortBy.direction === 'asc' ? 'desc' : 'asc'
-    setSortBy(field, direction)
-  }, [setSortBy])
+  console.log('useMemberSorting hook running with sortBy:', sortBy);
+  
+  // Ensure the hook rerenders when sortBy changes
+  useEffect(() => {
+    console.log('sortBy changed in useMemberSorting:', sortBy);
+  }, [sortBy]);
+  
+  const toggleSort = useCallback((field) => {
+    console.log('Toggling sort for field:', field);
+    console.log('Current sort state:', sortBy);
+    
+    // Get fresh state to avoid closure issues
+    const currentSortBy = useMembersStore.getState().sortBy;
+    const direction = currentSortBy.field === field && currentSortBy.direction === 'asc' ? 'desc' : 'asc';
+    console.log('New sort direction:', direction);
+    
+    // Update state
+    useMembersStore.setState({
+      sortBy: { field, direction },
+      _filteredMembersCache: null,
+      _cacheKey: ''
+    });
+    
+    // Force React Query to refetch members to trigger UI updates
+    queryClient.invalidateQueries(['members']);
+    
+    // Double check that the state was updated
+    setTimeout(() => {
+      const newSortBy = useMembersStore.getState().sortBy;
+      console.log('State after update:', newSortBy);
+    }, 0);
+  }, [queryClient])
   
   return {
     sortBy,

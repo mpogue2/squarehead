@@ -37,7 +37,8 @@ const MemberEditModal = ({ show, onHide }) => {
     partner_id: '',
     friend_id: '',
     status: 'assignable',
-    is_admin: false
+    is_admin: false,
+    birthday: ''
   })
   
   const [errors, setErrors] = useState({})
@@ -55,7 +56,8 @@ const MemberEditModal = ({ show, onHide }) => {
         partner_id: selectedMember.partner_id || '',
         friend_id: selectedMember.friend_id || '',
         status: selectedMember.status || 'assignable',
-        is_admin: selectedMember.is_admin || false
+        is_admin: selectedMember.is_admin || false,
+        birthday: selectedMember.birthday || ''
       })
     } else {
       // Reset form for new member
@@ -68,7 +70,8 @@ const MemberEditModal = ({ show, onHide }) => {
         partner_id: '',
         friend_id: '',
         status: 'assignable',
-        is_admin: false
+        is_admin: false,
+        birthday: ''
       })
     }
     setErrors({})
@@ -119,6 +122,11 @@ const MemberEditModal = ({ show, onHide }) => {
       newErrors.phone = 'Please enter a valid phone number'
     }
     
+    // Birthday validation (optional but if provided, should be valid MM/DD format)
+    if (formData.birthday && !/^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/.test(formData.birthday)) {
+      newErrors.birthday = 'Please enter a valid date in MM/DD format'
+    }
+    
     // Partner/friend validation
     if (formData.partner_id === formData.friend_id && formData.partner_id) {
       newErrors.friend_id = 'Partner and friend cannot be the same person'
@@ -144,16 +152,40 @@ const MemberEditModal = ({ show, onHide }) => {
         phone: formData.phone.trim() || null,
         address: formData.address.trim() || null,
         partner_id: formData.partner_id || null,
-        friend_id: formData.friend_id || null
+        friend_id: formData.friend_id || null,
+        birthday: formData.birthday.trim() || null
       }
       
       if (isEditing) {
-        await updateMember.mutateAsync({
+        console.log('Updating member with data:', {
           id: selectedMember.id,
           ...submitData
-        })
+        });
+        try {
+          await updateMember.mutateAsync({
+            id: selectedMember.id,
+            ...submitData
+          });
+          console.log('Member updated successfully');
+        } catch (err) {
+          console.error('Error updating member:', err);
+          if (err.response) {
+            console.error('Response data:', err.response.data);
+          }
+          throw err; // Re-throw to let the outer catch handler deal with it
+        }
       } else {
-        await createMember.mutateAsync(submitData)
+        console.log('Creating new member with data:', submitData);
+        try {
+          await createMember.mutateAsync(submitData);
+          console.log('Member created successfully');
+        } catch (err) {
+          console.error('Error creating member:', err);
+          if (err.response) {
+            console.error('Response data:', err.response.data);
+          }
+          throw err; // Re-throw to let the outer catch handler deal with it
+        }
       }
       
       onHide()
@@ -271,6 +303,24 @@ const MemberEditModal = ({ show, onHide }) => {
                   onChange={(e) => handleInputChange('address', e.target.value)}
                   placeholder="Enter address"
                 />
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Birthday (MM/DD)</Form.Label>
+                <Form.Control
+                  type="text"
+                  value={formData.birthday}
+                  onChange={(e) => handleInputChange('birthday', e.target.value)}
+                  isInvalid={!!errors.birthday}
+                  placeholder="Enter birthday (e.g., 01/15)"
+                  maxLength={5}
+                />
+                <Form.Control.Feedback type="invalid">
+                  {errors.birthday}
+                </Form.Control.Feedback>
+                <Form.Text className="text-muted">
+                  Optional. Format: MM/DD (e.g., 01/15 for January 15th)
+                </Form.Text>
               </Form.Group>
             </Col>
             

@@ -115,6 +115,9 @@ const MemberRow = React.memo(({ member, canEdit, canDelete, onEdit, onDelete }) 
       <td>{getStatusBadge(member)}</td>
       <td>{getRoleBadge(member)}</td>
       <td>
+        {member.birthday ? member.birthday : <span className="text-muted">-</span>}
+      </td>
+      <td>
         <div className="d-flex gap-1">
           {canEdit && (
             <OverlayTrigger
@@ -190,6 +193,13 @@ const Members = () => {
       setShowImportResults(true)
     }
   })
+  
+  // Force re-render when sortBy changes
+  const [forceUpdate, setForceUpdate] = useState(0)
+  useEffect(() => {
+    console.log('Sort state changed in Members component:', sortBy);
+    setForceUpdate(prev => prev + 1);
+  }, [sortBy.field, sortBy.direction])
   
   // Add a debounced export handler to prevent multiple rapid calls
   const handleExportCSV = useCallback(() => {
@@ -353,10 +363,14 @@ const Members = () => {
   }, [importCSV, error])
   
   // Memoized utility functions
+  // This key will force the icon to re-render when sortBy changes
+  const sortKey = `${sortBy.field}-${sortBy.direction}-${forceUpdate}`
+  
   const getSortIcon = useCallback((field) => {
+    console.log(`Getting sort icon for ${field}, current sort is ${sortBy.field} ${sortBy.direction} (key: ${sortKey})`);
     if (sortBy.field !== field) return <FaSort className="text-muted" />
     return sortBy.direction === 'asc' ? <FaSortUp /> : <FaSortDown />
-  }, [sortBy])
+  }, [sortBy.field, sortBy.direction, sortKey])
   
   const canEditMember = useCallback((member) => {
     return user?.is_admin || user?.id === member.id
@@ -440,7 +454,7 @@ const Members = () => {
             </InputGroup.Text>
             <Form.Control
               type="text"
-              placeholder="Search members by name, email, phone, or address..."
+              placeholder="Search members by name, email, phone, address, or birthday..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
             />
@@ -578,30 +592,33 @@ const Members = () => {
                     className="sortable-header" 
                     onClick={() => toggleSort('first_name')}
                     style={{ cursor: 'pointer' }}
+                    title="Click to sort by First Name"
                   >
                     <div className="d-flex align-items-center justify-content-between">
-                      First Name
-                      {getSortIcon('first_name')}
+                      <span>First Name</span>
+                      <span className="ms-2">{getSortIcon('first_name')}</span>
                     </div>
                   </th>
                   <th 
                     className="sortable-header" 
                     onClick={() => toggleSort('last_name')}
                     style={{ cursor: 'pointer' }}
+                    title="Click to sort by Last Name"
                   >
                     <div className="d-flex align-items-center justify-content-between">
-                      Last Name
-                      {getSortIcon('last_name')}
+                      <span>Last Name</span>
+                      <span className="ms-2">{getSortIcon('last_name')}</span>
                     </div>
                   </th>
                   <th 
                     className="sortable-header" 
                     onClick={() => toggleSort('email')}
                     style={{ cursor: 'pointer' }}
+                    title="Click to sort by Email"
                   >
                     <div className="d-flex align-items-center justify-content-between">
-                      Email
-                      {getSortIcon('email')}
+                      <span>Email</span>
+                      <span className="ms-2">{getSortIcon('email')}</span>
                     </div>
                   </th>
                   <th>Phone</th>
@@ -610,13 +627,24 @@ const Members = () => {
                   <th>Friend</th>
                   <th>Status</th>
                   <th>Role</th>
+                  <th 
+                    className="sortable-header" 
+                    onClick={() => toggleSort('birthday')}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to sort by Birthday"
+                  >
+                    <div className="d-flex align-items-center justify-content-between">
+                      <span>Birthday</span>
+                      <span className="ms-2">{getSortIcon('birthday')}</span>
+                    </div>
+                  </th>
                   <th style={{ width: '120px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredMembers.length === 0 ? (
                   <tr>
-                    <td colSpan="10" className="text-center py-4 text-muted">
+                    <td colSpan="11" className="text-center py-4 text-muted">
                       {hasActiveFilters ? 'No members match your filters' : 'No members found'}
                     </td>
                   </tr>

@@ -237,9 +237,12 @@ $app->put('/api/users/{id}', function (Request $request, Response $response, arr
             }
         }
         
+        // Log incoming update data for debugging
+        error_log("User update received data: " . json_encode($data));
+        
         // Prepare update data - only include provided fields
         $updateData = [];
-        $allowedFields = ['email', 'first_name', 'last_name', 'address', 'phone', 'role', 'partner_id', 'friend_id', 'status'];
+        $allowedFields = ['email', 'first_name', 'last_name', 'address', 'phone', 'role', 'partner_id', 'friend_id', 'status', 'birthday'];
         
         foreach ($allowedFields as $field) {
             if (array_key_exists($field, $data)) {
@@ -248,6 +251,7 @@ $app->put('/api/users/{id}', function (Request $request, Response $response, arr
                 } else {
                     $updateData[$field] = $data[$field];
                 }
+                error_log("User update field {$field}: " . json_encode($updateData[$field]));
             }
         }
         
@@ -292,7 +296,7 @@ $app->get('/api/users/export/csv', function (Request $request, Response $respons
         $users = $userModel->getAllWithRelations();
         
         // Format CSV to include partner and friend fields
-        $csvContent = "first_name,last_name,email,phone,address,role,status,partner_first_name,partner_last_name,friend_first_name,friend_last_name\n";
+        $csvContent = "first_name,last_name,email,phone,address,role,status,birthday,partner_first_name,partner_last_name,friend_first_name,friend_last_name\n";
         
         // CSV Data rows - manually escape fields - include all fields needed for complete import
         foreach ($users as $user) {
@@ -304,6 +308,7 @@ $app->get('/api/users/export/csv', function (Request $request, Response $respons
                 '"' . str_replace('"', '""', $user['address'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['is_admin'] ? 'admin' : 'member') . '"',
                 '"' . str_replace('"', '""', $user['status']) . '"',
+                '"' . str_replace('"', '""', $user['birthday'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['partner_first_name'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['partner_last_name'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['friend_first_name'] ?: '') . '"',
@@ -555,22 +560,36 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                 if ($existingUser) {
                     $skipCount++;
                     
-                    // Update existing user's address and geocode if needed
-                    if (!empty($data['address']) && ($data['address'] !== ($existingUser['address'] ?? ''))) {
+                    // Check if we need to update any user fields
+                    $needsUpdate = (!empty($data['address']) && ($data['address'] !== ($existingUser['address'] ?? ''))) ||
+                                  ($data['phone'] !== ($existingUser['phone'] ?? '')) ||
+                                  ($data['status'] !== ($existingUser['status'] ?? '')) ||
+                                  ($data['role'] !== ($existingUser['role'] ?? '')) ||
+                                  ($data['birthday'] !== ($existingUser['birthday'] ?? ''));
+                                  
+                    if ($needsUpdate) {
                         try {
-                            // Use updateWithGeocoding to handle address change with geocoding
+                            // Prepare update data
                             $updateData = [
-                                'address' => $data['address'],
-                                // Include other fields that might have changed
+                                // Include all fields that might have changed
                                 'phone' => $data['phone'] ?? $existingUser['phone'],
                                 'status' => $data['status'] ?? $existingUser['status'],
                                 'role' => $data['role'] ?? $existingUser['role'],
+                                'birthday' => $data['birthday'] ?? $existingUser['birthday'],
                             ];
                             
-                            $userModel->updateWithGeocoding($existingUser['id'], $updateData);
-                            error_log("CSV Import: Updated address with geocoding for user ID {$existingUser['id']}");
+                            // If address changed, add it to update data
+                            if (!empty($data['address']) && ($data['address'] !== ($existingUser['address'] ?? ''))) {
+                                $updateData['address'] = $data['address'];
+                                $userModel->updateWithGeocoding($existingUser['id'], $updateData);
+                                error_log("CSV Import: Updated address with geocoding for user ID {$existingUser['id']}");
+                            } else {
+                                // Use regular update without geocoding if address didn't change
+                                $userModel->update($existingUser['id'], $updateData);
+                                error_log("CSV Import: Updated user info for user ID {$existingUser['id']}");
+                            }
                         } catch (Exception $e) {
-                            error_log("CSV Import: Error updating address for user ID {$existingUser['id']}: " . $e->getMessage());
+                            error_log("CSV Import: Error updating user ID {$existingUser['id']}: " . $e->getMessage());
                         }
                     }
                     
@@ -601,7 +620,8 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     'address' => $data['address'] ?? '',
                     'status' => $data['status'] ?? 'assignable',
                     'role' => $data['role'] ?? 'member',
-                    'is_admin' => (strtolower($data['role'] ?? '') === 'admin') ? 1 : 0
+                    'is_admin' => (strtolower($data['role'] ?? '') === 'admin') ? 1 : 0,
+                    'birthday' => $data['birthday'] ?? null
                 ];
                 
                 // Geocode address if provided

@@ -68,11 +68,21 @@ const useMembersStore = create(
         _cacheKey: ''
       })),
       
-      setSortBy: (field, direction) => set({
-        sortBy: { field, direction },
-        _filteredMembersCache: null, // Clear cache when sort changes
-        _cacheKey: ''
-      }),
+      setSortBy: (field, direction) => {
+        console.log('Store setSortBy called with:', field, direction);
+        set(state => {
+          console.log('Previous state:', state.sortBy);
+          return {
+            sortBy: { field, direction },
+            _filteredMembersCache: null, // Clear cache when sort changes
+            _cacheKey: ''
+          };
+        });
+        // Log the state after update
+        setTimeout(() => {
+          console.log('New sortBy state:', get().sortBy);
+        }, 0);
+      },
       
       clearFilters: () => set({
         filters: {
@@ -89,6 +99,8 @@ const useMembersStore = create(
         const state = get()
         const { members, filters, sortBy, _filteredMembersCache, _cacheKey } = state
         
+        console.log('getFilteredMembers called with sortBy:', sortBy);
+        
         // Create a cache key based on current state
         const currentCacheKey = JSON.stringify({
           membersLength: Array.isArray(members) ? members.length : 0,
@@ -98,8 +110,11 @@ const useMembersStore = create(
         
         // Return cached result if available and valid
         if (_filteredMembersCache && _cacheKey === currentCacheKey) {
+          console.log('Using cached filtered members');
           return _filteredMembersCache
         }
+        
+        console.log('Recalculating filtered and sorted members');
         
         // Ensure members is an array
         const membersList = Array.isArray(members) ? members : []
@@ -113,7 +128,8 @@ const useMembersStore = create(
               member.last_name,
               member.email,
               member.phone,
-              member.address
+              member.address,
+              member.birthday
             ].filter(Boolean).join(' ').toLowerCase()
             
             if (!searchFields.includes(searchTerm)) {
@@ -150,16 +166,71 @@ const useMembersStore = create(
           return true
         })
         
-        // Sort
-        filtered.sort((a, b) => {
-          const aValue = a[sortBy.field] || ''
-          const bValue = b[sortBy.field] || ''
+        console.log('Sorting filtered members by:', sortBy.field, sortBy.direction);
+        
+        // Create a new array with the filtered results for sorting
+        const sortedFiltered = [...filtered];
+        
+        // Sort function
+        sortedFiltered.sort((a, b) => {
+          // Get values, defaulting to empty string if not present
+          const aValue = a[sortBy.field] !== undefined ? a[sortBy.field] : '';
+          const bValue = b[sortBy.field] !== undefined ? b[sortBy.field] : '';
           
-          const comparison = aValue.toString().localeCompare(bValue.toString())
-          return sortBy.direction === 'asc' ? comparison : -comparison
-        })
+          // Special handling for birthday field in MM/DD format
+          if (sortBy.field === 'birthday') {
+            // Handle empty values - empty values should be at the end
+            if (!aValue && !bValue) return 0;
+            if (!aValue) return 1; // Push empty values to the end
+            if (!bValue) return -1;
+            
+            // Try to parse MM/DD format
+            try {
+              const [aMonth, aDay] = aValue.split('/').map(Number);
+              const [bMonth, bDay] = bValue.split('/').map(Number);
+              
+              // Check if we have valid numbers
+              if (!isNaN(aMonth) && !isNaN(aDay) && !isNaN(bMonth) && !isNaN(bDay)) {
+                // First compare months
+                if (aMonth !== bMonth) {
+                  return sortBy.direction === 'asc' ? aMonth - bMonth : bMonth - aMonth;
+                }
+                
+                // If months are equal, compare days
+                return sortBy.direction === 'asc' ? aDay - bDay : bDay - aDay;
+              }
+            } catch (e) {
+              console.error('Error sorting birthdays:', e);
+            }
+          }
+          
+          // Default string comparison for all other fields
+          let comparison;
+          
+          // Handle special cases like numbers stored as strings
+          if (typeof aValue === 'number' && typeof bValue === 'number') {
+            comparison = aValue - bValue;
+          } else {
+            // Convert to strings and compare
+            comparison = String(aValue).localeCompare(String(bValue));
+          }
+          
+          // Apply sort direction
+          return sortBy.direction === 'asc' ? comparison : -comparison;
+        });
+        
+        // Replace the filtered array with our sorted array
+        filtered = sortedFiltered;
         
         // Cache the result - but do it outside of the render cycle
+        // Log the sort results
+        console.log('Sorted members by:', sortBy.field, sortBy.direction);
+        console.log('First few sorted items:', filtered.slice(0, 3).map(m => ({
+          id: m.id,
+          name: `${m.first_name} ${m.last_name}`,
+          [sortBy.field]: m[sortBy.field]
+        })));
+        
         setTimeout(() => {
           set({
             _filteredMembersCache: filtered,

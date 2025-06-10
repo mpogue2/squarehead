@@ -30,7 +30,8 @@ class User extends BaseModel
         'is_admin',
         'latitude',
         'longitude',
-        'geocoded_at'
+        'geocoded_at',
+        'birthday'
     ];
     
     /**
@@ -99,17 +100,24 @@ class User extends BaseModel
      */
     public function updateWithGeocoding(int $id, array $data): ?array
     {
+        // Log the update data for debugging
+        error_log("User::updateWithGeocoding called for user ID {$id} with data: " . json_encode($data));
+        
         // Get current user data to check if address changed
         $currentUser = $this->find($id);
         if (!$currentUser) {
+            error_log("User::updateWithGeocoding - User ID {$id} not found!");
             return false;
         }
+        
+        error_log("User::updateWithGeocoding - Current user data: " . json_encode($currentUser));
         
         $addressChanged = false;
         if (isset($data['address'])) {
             $oldAddress = trim($currentUser['address'] ?? '');
             $newAddress = trim($data['address']);
             $addressChanged = $oldAddress !== $newAddress;
+            error_log("User::updateWithGeocoding - Address changed: " . ($addressChanged ? 'YES' : 'NO'));
         }
         
         // If address changed, try to geocode it
@@ -143,7 +151,15 @@ class User extends BaseModel
             $data['geocoded_at'] = null;
         }
         
-        return $this->update($id, $data);
+        // Log the data we're about to update
+        error_log("User::updateWithGeocoding - Final update data: " . json_encode($data));
+        
+        $result = $this->update($id, $data);
+        
+        // Log the result
+        error_log("User::updateWithGeocoding - Update result: " . ($result ? json_encode($result) : 'false'));
+        
+        return $result;
     }
     
     /**
