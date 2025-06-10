@@ -291,10 +291,10 @@ $app->get('/api/users/export/csv', function (Request $request, Response $respons
         $userModel = new User();
         $users = $userModel->getAllWithRelations();
         
-        // Format CSV to match import requirements (first_name, last_name, email, phone, address, role, status)
-        $csvContent = "first_name,last_name,email,phone,address,role,status\n";
+        // Format CSV to include partner and friend fields
+        $csvContent = "first_name,last_name,email,phone,address,role,status,partner_first_name,partner_last_name,friend_first_name,friend_last_name\n";
         
-        // CSV Data rows - manually escape fields - only include fields needed for import
+        // CSV Data rows - manually escape fields - include all fields needed for complete import
         foreach ($users as $user) {
             $csvContent .= implode(',', [
                 '"' . str_replace('"', '""', $user['first_name']) . '"',
@@ -303,7 +303,11 @@ $app->get('/api/users/export/csv', function (Request $request, Response $respons
                 '"' . str_replace('"', '""', $user['phone'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['address'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['is_admin'] ? 'admin' : 'member') . '"',
-                '"' . str_replace('"', '""', $user['status']) . '"'
+                '"' . str_replace('"', '""', $user['status']) . '"',
+                '"' . str_replace('"', '""', $user['partner_first_name'] ?: '') . '"',
+                '"' . str_replace('"', '""', $user['partner_last_name'] ?: '') . '"',
+                '"' . str_replace('"', '""', $user['friend_first_name'] ?: '') . '"',
+                '"' . str_replace('"', '""', $user['friend_last_name'] ?: '') . '"'
             ]) . "\n";
         }
         
@@ -552,7 +556,7 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     continue; // Skip existing user
                 }
                 
-                // Prepare user data
+                // Prepare user data without partner/friend relations initially
                 $userData = [
                     'email' => $data['email'],
                     'first_name' => $data['first_name'],
@@ -564,9 +568,57 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     'is_admin' => (strtolower($data['role'] ?? '') === 'admin') ? 1 : 0
                 ];
                 
-                // Create user
-                $userModel->create($userData);
+                // Store partner and friend info for later processing
+                $partnerFirstName = $data['partner_first_name'] ?? '';
+                $partnerLastName = $data['partner_last_name'] ?? '';
+                $friendFirstName = $data['friend_first_name'] ?? '';
+                $friendLastName = $data['friend_last_name'] ?? '';
+                
+                // Create user first
+                $newUser = $userModel->create($userData);
                 $importCount++;
+                
+                // Process partner relationship if specified
+                if (!empty($partnerFirstName) && !empty($partnerLastName)) {
+                    try {
+                        // Search for partner by name
+                        $sql = "SELECT id FROM users WHERE first_name = ? AND last_name = ? LIMIT 1";
+                        $stmt = $userModel->getDb()->prepare($sql);
+                        $stmt->execute([$partnerFirstName, $partnerLastName]);
+                        $partnerId = $stmt->fetchColumn();
+                        
+                        if ($partnerId) {
+                            // Update user with partner_id
+                            $userModel->update($newUser['id'], ['partner_id' => $partnerId]);
+                            error_log("CSV Import: User {$newUser['email']} linked to partner ID {$partnerId}");
+                        } else {
+                            error_log("CSV Import: Partner '{$partnerFirstName} {$partnerLastName}' not found for user {$newUser['email']}");
+                        }
+                    } catch (Exception $e) {
+                        error_log("CSV Import: Error linking partner: " . $e->getMessage());
+                    }
+                }
+                
+                // Process friend relationship if specified
+                if (!empty($friendFirstName) && !empty($friendLastName)) {
+                    try {
+                        // Search for friend by name
+                        $sql = "SELECT id FROM users WHERE first_name = ? AND last_name = ? LIMIT 1";
+                        $stmt = $userModel->getDb()->prepare($sql);
+                        $stmt->execute([$friendFirstName, $friendLastName]);
+                        $friendId = $stmt->fetchColumn();
+                        
+                        if ($friendId) {
+                            // Update user with friend_id
+                            $userModel->update($newUser['id'], ['friend_id' => $friendId]);
+                            error_log("CSV Import: User {$newUser['email']} linked to friend ID {$friendId}");
+                        } else {
+                            error_log("CSV Import: Friend '{$friendFirstName} {$friendLastName}' not found for user {$newUser['email']}");
+                        }
+                    } catch (Exception $e) {
+                        error_log("CSV Import: Error linking friend: " . $e->getMessage());
+                    }
+                }
             } catch (Exception $e) {
                 error_log("CSV Import error processing row " . ($i + 1) . ": " . $e->getMessage());
                 $errors[] = "Row " . ($i + 1) . ": " . $e->getMessage();

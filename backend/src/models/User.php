@@ -9,6 +9,14 @@ class User extends BaseModel
 {
     protected string $table = 'users';
     
+    /**
+     * Return the database connection for custom queries
+     */
+    public function getDb()
+    {
+        return $this->db;
+    }
+    
     protected array $fillable = [
         'email',
         'first_name',
@@ -42,21 +50,38 @@ class User extends BaseModel
      */
     public function getAllWithRelations(): array
     {
-        $sql = "
-            SELECT 
-                u.*,
-                p.first_name as partner_first_name,
-                p.last_name as partner_last_name,
-                f.first_name as friend_first_name,
-                f.last_name as friend_last_name
-            FROM users u
-            LEFT JOIN users p ON u.partner_id = p.id
-            LEFT JOIN users f ON u.friend_id = f.id
-            ORDER BY u.last_name, u.first_name
-        ";
-        
-        $stmt = $this->db->query($sql);
-        return $stmt->fetchAll();
+        try {
+            error_log("User::getAllWithRelations: Starting to fetch all users");
+            
+            $sql = "
+                SELECT 
+                    u.*,
+                    p.first_name as partner_first_name,
+                    p.last_name as partner_last_name,
+                    f.first_name as friend_first_name,
+                    f.last_name as friend_last_name
+                FROM users u
+                LEFT JOIN users p ON u.partner_id = p.id
+                LEFT JOIN users f ON u.friend_id = f.id
+                ORDER BY u.last_name, u.first_name
+            ";
+            
+            error_log("User::getAllWithRelations: Executing SQL query");
+            $stmt = $this->db->query($sql);
+            
+            if (!$stmt) {
+                $error = $this->db->errorInfo();
+                error_log("User::getAllWithRelations: Database error: " . print_r($error, true));
+                return [];
+            }
+            
+            $results = $stmt->fetchAll();
+            error_log("User::getAllWithRelations: Fetched " . count($results) . " users");
+            return $results;
+        } catch (\Exception $e) {
+            error_log("User::getAllWithRelations: Exception: " . $e->getMessage());
+            return [];
+        }
     }
     
     /**
