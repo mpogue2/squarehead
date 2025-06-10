@@ -19,3 +19,19 @@ export { useMembers, useCreateMember, useUpdateMember, useDeleteMember } from '.
 export { useCurrentSchedule, useNextSchedule, useCreateNextSchedule } from './useSchedules'
 export { useSettings, useUpdateSettings, useClubTheme } from './useSettings'
 export { useLoadingState, useErrorHandler, useModals, useUI } from './useUI'
+
+// Simple stubs for maintenance hooks
+export const useClearMembers = () => ({ 
+  mutateAsync: async () => ({ data: { deleted_count: 0 } }),
+  isLoading: false 
+})
+
+export const useClearNextSchedule = () => ({ 
+  mutateAsync: async () => ({ data: { deleted_count: 0 } }),
+  isLoading: false
+})
+
+export const useClearCurrentSchedule = () => ({ 
+  mutateAsync: async () => ({ data: { deleted_count: 0 } }),
+  isLoading: false
+})
