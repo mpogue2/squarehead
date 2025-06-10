@@ -530,52 +530,37 @@ const Members = () => {
                 </Dropdown.Menu>
               </Dropdown>
               
-              <form 
-                id="csv-upload-form" 
-                method="post" 
-                encType="multipart/form-data" 
-                action="http://localhost:8000/api/users/import"
-                target="csv-upload-frame" // Hidden iframe for the response
+              <Button 
+                variant="outline-success" 
+                onClick={() => document.getElementById('csv-upload').click()}
               >
-                <input 
-                  type="hidden" 
-                  name="token" 
-                  value={JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token || 'dev-token-valid'} 
+                <FaUpload className="me-2" />
+                Import CSV
+                <input
+                  id="csv-upload"
+                  type="file"
+                  accept=".csv"
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    if (event.target.files && event.target.files[0]) {
+                      const file = event.target.files[0];
+                      importCSV.mutate(file, {
+                        onSuccess: (data) => {
+                          console.log('CSV import successful:', data);
+                          setShowImportResults(true);
+                          setImportResults(data.data);
+                          invalidateMembers();
+                        },
+                        onError: (error) => {
+                          console.error('CSV import failed:', error);
+                          toast.error('CSV import failed. Please check the file format and try again.');
+                        }
+                      });
+                    }
+                  }}
+                  disabled={importCSV.isLoading}
                 />
-                <Button variant="outline-success" as="label" htmlFor="csv-upload">
-                  <FaUpload className="me-2" />
-                  Import CSV
-                  <input
-                    id="csv-upload"
-                    name="file"
-                    type="file"
-                    accept=".csv"
-                    onChange={(event) => {
-                      if (event.target.files && event.target.files[0]) {
-                        // Auto-submit the form when a file is selected
-                        document.getElementById('csv-upload-form').submit();
-                        
-                        // Set up the iframe to listen for load events to detect when the upload is complete
-                        const iframe = document.querySelector('iframe[name="csv-upload-frame"]');
-                        iframe.onload = () => {
-                          try {
-                            // Wait a moment for the server to process the upload before refreshing
-                            setTimeout(() => {
-                              console.log('CSV upload complete, refreshing page');
-                              window.location.reload();
-                            }, 1000);
-                          } catch (err) {
-                            console.error('Error handling upload completion:', err);
-                          }
-                        };
-                      }
-                    }}
-                    style={{ display: 'none' }}
-                    disabled={importCSV.isLoading}
-                  />
-                </Button>
-                <iframe name="csv-upload-frame" style={{ display: 'none' }}></iframe>
-              </form>
+              </Button>
             </ButtonGroup>
           </div>
         </Col>
