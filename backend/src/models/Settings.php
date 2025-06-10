@@ -30,16 +30,34 @@ class Settings extends BaseModel
      */
     public function set(string $key, string $value, string $type = 'string'): bool
     {
-        $stmt = $this->db->prepare("
-            INSERT INTO settings (setting_key, setting_value, setting_type) 
-            VALUES (?, ?, ?)
-            ON CONFLICT(setting_key) DO UPDATE SET 
-                setting_value = excluded.setting_value,
-                setting_type = excluded.setting_type,
-                updated_at = CURRENT_TIMESTAMP
-        ");
+        // Check if we're using SQLite or MariaDB
+        $dbType = $this->db->getAttribute(\PDO::ATTR_DRIVER_NAME);
         
-        return $stmt->execute([$key, $value, $type]);
+        if ($dbType === 'sqlite') {
+            // SQLite syntax
+            $stmt = $this->db->prepare("
+                INSERT INTO settings (setting_key, setting_value, setting_type) 
+                VALUES (?, ?, ?)
+                ON CONFLICT(setting_key) DO UPDATE SET 
+                    setting_value = excluded.setting_value,
+                    setting_type = excluded.setting_type,
+                    updated_at = CURRENT_TIMESTAMP
+            ");
+            
+            return $stmt->execute([$key, $value, $type]);
+        } else {
+            // MySQL/MariaDB syntax
+            $stmt = $this->db->prepare("
+                INSERT INTO settings (setting_key, setting_value, setting_type) 
+                VALUES (?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                    setting_value = VALUES(setting_value),
+                    setting_type = VALUES(setting_type),
+                    updated_at = CURRENT_TIMESTAMP
+            ");
+            
+            return $stmt->execute([$key, $value, $type]);
+        }
     }
     
     /**

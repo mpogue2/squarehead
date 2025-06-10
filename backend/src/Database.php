@@ -95,15 +95,16 @@ class Database
                     'database_file' => $dbname
                 ];
             } else {
-                // MySQL test query
-                $stmt = $pdo->query("SELECT VERSION() as version, NOW() as current_time");
+                // MySQL/MariaDB test query
+                $stmt = $pdo->query("SELECT VERSION() as version");
                 $result = $stmt->fetch();
+                $result['current_time'] = date('Y-m-d H:i:s');
                 
                 return [
                     'status' => 'connected',
-                    'database_type' => 'MySQL',
-                    'mysql_version' => $result['version'],
-                    'current_time' => $result['current_time'],
+                    'database_type' => 'MySQL/MariaDB',
+                    'mysql_version' => $result['version'] ?? 'unknown',
+                    'current_time' => $result['current_time'] ?? date('Y-m-d H:i:s'),
                     'host' => $_ENV['DB_HOST'] ?? 'localhost',
                     'database' => $dbname
                 ];
