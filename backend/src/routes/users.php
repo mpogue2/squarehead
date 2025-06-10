@@ -505,6 +505,7 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
         $importCount = 0;
         $skipCount = 0;
         $errors = [];
+        $relationshipsToProcess = []; // Store relationships for second pass
         
         // Start from row 1 (skip headers)
         for ($i = 1; $i < count($lines); $i++) {
@@ -553,7 +554,23 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                 $existingUser = $userModel->findByEmail($data['email']);
                 if ($existingUser) {
                     $skipCount++;
-                    continue; // Skip existing user
+                    
+                    // Even for skipped users, we'll update their partner/friend relationships
+                    // Store relationship info for second pass
+                    if (!empty($data['partner_first_name']) || !empty($data['partner_last_name']) || 
+                        !empty($data['friend_first_name']) || !empty($data['friend_last_name'])) {
+                        
+                        $relationshipsToProcess[] = [
+                            'user_id' => $existingUser['id'],
+                            'email' => $data['email'],
+                            'partner_first_name' => $data['partner_first_name'] ?? '',
+                            'partner_last_name' => $data['partner_last_name'] ?? '',
+                            'friend_first_name' => $data['friend_first_name'] ?? '',
+                            'friend_last_name' => $data['friend_last_name'] ?? ''
+                        ];
+                    }
+                    
+                    continue; // Skip to next user
                 }
                 
                 // Prepare user data without partner/friend relations initially
@@ -568,60 +585,93 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     'is_admin' => (strtolower($data['role'] ?? '') === 'admin') ? 1 : 0
                 ];
                 
-                // Store partner and friend info for later processing
-                $partnerFirstName = $data['partner_first_name'] ?? '';
-                $partnerLastName = $data['partner_last_name'] ?? '';
-                $friendFirstName = $data['friend_first_name'] ?? '';
-                $friendLastName = $data['friend_last_name'] ?? '';
-                
                 // Create user first
                 $newUser = $userModel->create($userData);
                 $importCount++;
                 
-                // Process partner relationship if specified
-                if (!empty($partnerFirstName) && !empty($partnerLastName)) {
-                    try {
-                        // Search for partner by name
-                        $sql = "SELECT id FROM users WHERE first_name = ? AND last_name = ? LIMIT 1";
-                        $stmt = $userModel->getDb()->prepare($sql);
-                        $stmt->execute([$partnerFirstName, $partnerLastName]);
-                        $partnerId = $stmt->fetchColumn();
-                        
-                        if ($partnerId) {
-                            // Update user with partner_id
-                            $userModel->update($newUser['id'], ['partner_id' => $partnerId]);
-                            error_log("CSV Import: User {$newUser['email']} linked to partner ID {$partnerId}");
-                        } else {
-                            error_log("CSV Import: Partner '{$partnerFirstName} {$partnerLastName}' not found for user {$newUser['email']}");
-                        }
-                    } catch (Exception $e) {
-                        error_log("CSV Import: Error linking partner: " . $e->getMessage());
-                    }
+                // Store relationship info for second pass
+                if (!empty($data['partner_first_name']) || !empty($data['partner_last_name']) || 
+                    !empty($data['friend_first_name']) || !empty($data['friend_last_name'])) {
+                    
+                    $relationshipsToProcess[] = [
+                        'user_id' => $newUser['id'],
+                        'email' => $data['email'],
+                        'partner_first_name' => $data['partner_first_name'] ?? '',
+                        'partner_last_name' => $data['partner_last_name'] ?? '',
+                        'friend_first_name' => $data['friend_first_name'] ?? '',
+                        'friend_last_name' => $data['friend_last_name'] ?? ''
+                    ];
                 }
-                
-                // Process friend relationship if specified
-                if (!empty($friendFirstName) && !empty($friendLastName)) {
-                    try {
-                        // Search for friend by name
-                        $sql = "SELECT id FROM users WHERE first_name = ? AND last_name = ? LIMIT 1";
-                        $stmt = $userModel->getDb()->prepare($sql);
-                        $stmt->execute([$friendFirstName, $friendLastName]);
-                        $friendId = $stmt->fetchColumn();
-                        
-                        if ($friendId) {
-                            // Update user with friend_id
-                            $userModel->update($newUser['id'], ['friend_id' => $friendId]);
-                            error_log("CSV Import: User {$newUser['email']} linked to friend ID {$friendId}");
-                        } else {
-                            error_log("CSV Import: Friend '{$friendFirstName} {$friendLastName}' not found for user {$newUser['email']}");
-                        }
-                    } catch (Exception $e) {
-                        error_log("CSV Import: Error linking friend: " . $e->getMessage());
-                    }
-                }
+                // Relationships will be processed in second pass
             } catch (Exception $e) {
                 error_log("CSV Import error processing row " . ($i + 1) . ": " . $e->getMessage());
                 $errors[] = "Row " . ($i + 1) . ": " . $e->getMessage();
+            }
+        }
+        
+        // Second pass - process all relationships after all users are created
+        error_log("CSV Import: Processing relationships for " . count($relationshipsToProcess) . " users");
+        $relationshipsProcessed = 0;
+        $relationshipsSkipped = 0;
+        
+        foreach ($relationshipsToProcess as $relationship) {
+            $userId = $relationship['user_id'];
+            $updateData = [];
+            
+            // Process partner relationship
+            if (!empty($relationship['partner_first_name']) && !empty($relationship['partner_last_name'])) {
+                try {
+                    // Search for partner by name
+                    $sql = "SELECT id FROM users WHERE first_name = ? AND last_name = ? LIMIT 1";
+                    $stmt = $userModel->getDb()->prepare($sql);
+                    $stmt->execute([$relationship['partner_first_name'], $relationship['partner_last_name']]);
+                    $partnerId = $stmt->fetchColumn();
+                    
+                    if ($partnerId) {
+                        $updateData['partner_id'] = $partnerId;
+                        error_log("CSV Import: User ID {$userId} linked to partner ID {$partnerId}");
+                        $relationshipsProcessed++;
+                    } else {
+                        error_log("CSV Import: Partner '{$relationship['partner_first_name']} {$relationship['partner_last_name']}' not found for user ID {$userId}");
+                        $relationshipsSkipped++;
+                    }
+                } catch (Exception $e) {
+                    error_log("CSV Import: Error linking partner for user ID {$userId}: " . $e->getMessage());
+                    $relationshipsSkipped++;
+                }
+            }
+            
+            // Process friend relationship
+            if (!empty($relationship['friend_first_name']) && !empty($relationship['friend_last_name'])) {
+                try {
+                    // Search for friend by name
+                    $sql = "SELECT id FROM users WHERE first_name = ? AND last_name = ? LIMIT 1";
+                    $stmt = $userModel->getDb()->prepare($sql);
+                    $stmt->execute([$relationship['friend_first_name'], $relationship['friend_last_name']]);
+                    $friendId = $stmt->fetchColumn();
+                    
+                    if ($friendId) {
+                        $updateData['friend_id'] = $friendId;
+                        error_log("CSV Import: User ID {$userId} linked to friend ID {$friendId}");
+                        $relationshipsProcessed++;
+                    } else {
+                        error_log("CSV Import: Friend '{$relationship['friend_first_name']} {$relationship['friend_last_name']}' not found for user ID {$userId}");
+                        $relationshipsSkipped++;
+                    }
+                } catch (Exception $e) {
+                    error_log("CSV Import: Error linking friend for user ID {$userId}: " . $e->getMessage());
+                    $relationshipsSkipped++;
+                }
+            }
+            
+            // Update user if any relationships were found
+            if (!empty($updateData)) {
+                try {
+                    $userModel->update($userId, $updateData);
+                } catch (Exception $e) {
+                    error_log("CSV Import: Error updating relationships for user ID {$userId}: " . $e->getMessage());
+                    $errors[] = "Error updating relationships for " . $relationship['email'] . ": " . $e->getMessage();
+                }
             }
         }
         
@@ -629,12 +679,20 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
         $resultData = [
             'imported' => $importCount,
             'skipped' => $skipCount,
+            'relationships_processed' => $relationshipsProcessed,
+            'relationships_skipped' => $relationshipsSkipped,
             'errors' => $errors
         ];
         
         $message = "Import completed: {$importCount} users imported";
         if ($skipCount > 0) {
             $message .= ", {$skipCount} skipped (already exist)";
+        }
+        if ($relationshipsProcessed > 0) {
+            $message .= ", {$relationshipsProcessed} relationships linked";
+        }
+        if ($relationshipsSkipped > 0) {
+            $message .= ", {$relationshipsSkipped} relationships skipped";
         }
         if (count($errors) > 0) {
             $message .= ", " . count($errors) . " errors occurred";

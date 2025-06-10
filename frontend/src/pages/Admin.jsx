@@ -8,14 +8,21 @@ import {
   Alert, 
   Spinner,
   Badge,
-  InputGroup
+  InputGroup,
+  Modal
 } from 'react-bootstrap'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSettings, useUpdateSettings } from '../hooks/useSettings'
+import { useClearMembers, useClearNextSchedule, useClearCurrentSchedule } from '../hooks/useMaintenance'
 import { useToast } from '../components/ToastProvider'
 
 const Admin = () => {
+  const queryClient = useQueryClient()
   const { data: settings, isLoading, error } = useSettings()
   const updateSettingsMutation = useUpdateSettings()
+  const clearMembersMutation = useClearMembers()
+  const clearNextScheduleMutation = useClearNextSchedule()
+  const clearCurrentScheduleMutation = useClearCurrentSchedule()
   const { success, error: showError } = useToast()
   
   // Custom styles for placeholder text color
@@ -77,12 +84,176 @@ const Admin = () => {
     smtp_password: false
   })
   
+  // Maintenance confirmation modal state
+  const [maintenanceModal, setMaintenanceModal] = useState({
+    show: false,
+    type: null,
+    title: '',
+    message: '',
+    confirmHandler: null
+  })
+  
+  // Modal visibility state (separate from content for more reliable control)
+  const [isModalVisible, setIsModalVisible] = useState(false)
+  
   // Toggle password visibility
   const togglePasswordVisibility = (field) => {
     setPasswordVisibility(prev => ({
       ...prev,
       [field]: !prev[field]
     }))
+  }
+  
+  // Maintenance operation handlers
+  const showMaintenanceConfirmation = (type, title, message, confirmHandler) => {
+    // First set the modal content
+    setMaintenanceModal({
+      show: true,
+      type,
+      title,
+      message,
+      confirmHandler
+    })
+    
+    // Then ensure modal is visible
+    setIsModalVisible(true)
+  }
+  
+  const hideMaintenanceModal = () => {
+    // First hide the modal
+    setIsModalVisible(false)
+    
+    // Then clear the content after a short delay
+    setTimeout(() => {
+      setMaintenanceModal({
+        show: false,
+        type: null,
+        title: '',
+        message: '',
+        confirmHandler: null
+      })
+    }, 300)
+  }
+  
+  const handleClearMembers = () => {
+    showMaintenanceConfirmation(
+      'clear-members',
+      'Clear Members List',
+      'This will permanently delete ALL members from the database except the admin account. This action CANNOT be undone. Are you absolutely sure you want to proceed?',
+      async () => {
+        try {
+          console.log('Starting direct SQL clear members')
+          
+          // Force close the modal first
+          setIsModalVisible(false)
+          
+          // Use the direct SQL approach instead of the regular API
+          const response = await fetch('http://localhost:8000/api/maintenance/direct-clear-members')
+          const result = await response.json()
+          console.log('Direct SQL clear completed:', result)
+          
+          // Complete the modal hiding process
+          setTimeout(() => {
+            setMaintenanceModal({
+              show: false,
+              type: null,
+              title: '',
+              message: '',
+              confirmHandler: null
+            })
+            
+            // Show success message
+            success(`Successfully cleared ${result.data.deleted_count} members from the database`)
+            
+            // Force refresh the members data
+            queryClient.invalidateQueries({ queryKey: ['members'] })
+            queryClient.invalidateQueries({ queryKey: ['users'] })
+            
+            // Force reload the page after 1 second to ensure UI is updated
+            setTimeout(() => {
+              window.location.reload()
+            }, 1000)
+          }, 300)
+        } catch (error) {
+          // Also force close the modal on error
+          setIsModalVisible(false)
+          
+          console.error('Error in direct SQL clear members:', error)
+          showError(`Failed to clear members: ${error.message}`)
+          
+          // Complete the modal hiding process
+          setTimeout(() => {
+            setMaintenanceModal({
+              show: false,
+              type: null,
+              title: '',
+              message: '',
+              confirmHandler: null
+            })
+          }, 300)
+        }
+      }
+    )
+  }
+  
+  const handleClearNextSchedule = () => {
+    showMaintenanceConfirmation(
+      'clear-next-schedule',
+      'Clear Next Schedule',
+      'This will permanently delete the Next Schedule and all its assignments. This action CANNOT be undone. Are you absolutely sure you want to proceed?',
+      async () => {
+        try {
+          console.log('Starting clearNextScheduleMutation.mutateAsync()')
+          const result = await clearNextScheduleMutation.mutateAsync()
+          console.log('Completed clearNextScheduleMutation.mutateAsync()', result)
+          
+          // Make sure to properly close the modal before showing success
+          hideMaintenanceModal()
+          
+          // Show success message after modal is closed
+          setTimeout(() => {
+            if (result.data.schedule_deleted) {
+              success(`Successfully cleared next schedule "${result.data.schedule_name}" and ${result.data.assignments_deleted} assignments`)
+            } else {
+              success('No next schedule found to clear')
+            }
+          }, 100)
+        } catch (error) {
+          console.error('Error in clearNextScheduleMutation:', error)
+          showError(`Failed to clear next schedule: ${error.response?.data?.message || error.message}`)
+        }
+      }
+    )
+  }
+  
+  const handleClearCurrentSchedule = () => {
+    showMaintenanceConfirmation(
+      'clear-current-schedule',
+      'Clear Current Schedule',
+      'This will permanently delete the Current Schedule and all its assignments. This action CANNOT be undone. Are you absolutely sure you want to proceed?',
+      async () => {
+        try {
+          console.log('Starting clearCurrentScheduleMutation.mutateAsync()')
+          const result = await clearCurrentScheduleMutation.mutateAsync()
+          console.log('Completed clearCurrentScheduleMutation.mutateAsync()', result)
+          
+          // Make sure to properly close the modal before showing success
+          hideMaintenanceModal()
+          
+          // Show success message after modal is closed
+          setTimeout(() => {
+            if (result.data.schedule_deleted) {
+              success(`Successfully cleared current schedule "${result.data.schedule_name}" and ${result.data.assignments_deleted} assignments`)
+            } else {
+              success('No current schedule found to clear')
+            }
+          }, 100)
+        } catch (error) {
+          console.error('Error in clearCurrentScheduleMutation:', error)
+          showError(`Failed to clear current schedule: ${error.response?.data?.message || error.message}`)
+        }
+      }
+    )
   }
   
   // Update form data when settings are loaded
@@ -857,6 +1028,102 @@ Best regards,
           </Card.Body>
         </Card>
         
+        {/* Maintenance Section Card */}
+        <Card className="mb-4">
+          <Card.Header className="bg-warning text-dark">
+            <h4 className="mb-0">⚠️ Maintenance Operations</h4>
+          </Card.Header>
+          <Card.Body>
+            <Alert variant="danger" className="mb-3">
+              <Alert.Heading>⚠️ DANGER ZONE</Alert.Heading>
+              <p className="mb-0">
+                These operations permanently delete data and <strong>CANNOT BE UNDONE</strong>. 
+                Use these functions for testing purposes only.
+              </p>
+            </Alert>
+            
+            <Row>
+              <Col md={4} className="mb-3">
+                <Card className="h-100 border-danger">
+                  <Card.Body className="text-center">
+                    <h6 className="text-danger">Clear Members List</h6>
+                    <p className="small text-muted mb-3">
+                      Remove all members from the database (preserves admin account)
+                    </p>
+                    <Button 
+                      variant="outline-danger" 
+                      size="sm"
+                      onClick={handleClearMembers}
+                      disabled={clearMembersMutation.isLoading}
+                    >
+                      {clearMembersMutation.isLoading ? (
+                        <>
+                          <Spinner size="sm" className="me-1" />
+                          Clearing...
+                        </>
+                      ) : (
+                        'Clear Members'
+                      )}
+                    </Button>
+                  </Card.Body>
+                </Card>
+              </Col>
+              
+              <Col md={4} className="mb-3">
+                <Card className="h-100 border-warning">
+                  <Card.Body className="text-center">
+                    <h6 className="text-warning">Clear Next Schedule</h6>
+                    <p className="small text-muted mb-3">
+                      Remove the Next Schedule and all its assignments
+                    </p>
+                    <Button 
+                      variant="outline-warning" 
+                      size="sm"
+                      onClick={handleClearNextSchedule}
+                      disabled={clearNextScheduleMutation.isLoading}
+                    >
+                      {clearNextScheduleMutation.isLoading ? (
+                        <>
+                          <Spinner size="sm" className="me-1" />
+                          Clearing...
+                        </>
+                      ) : (
+                        'Clear Next Schedule'
+                      )}
+                    </Button>
+                  </Card.Body>
+                </Card>
+              </Col>
+              
+              <Col md={4} className="mb-3">
+                <Card className="h-100 border-danger">
+                  <Card.Body className="text-center">
+                    <h6 className="text-danger">Clear Current Schedule</h6>
+                    <p className="small text-muted mb-3">
+                      Remove the Current Schedule and all its assignments
+                    </p>
+                    <Button 
+                      variant="outline-danger" 
+                      size="sm"
+                      onClick={handleClearCurrentSchedule}
+                      disabled={clearCurrentScheduleMutation.isLoading}
+                    >
+                      {clearCurrentScheduleMutation.isLoading ? (
+                        <>
+                          <Spinner size="sm" className="me-1" />
+                          Clearing...
+                        </>
+                      ) : (
+                        'Clear Current Schedule'
+                      )}
+                    </Button>
+                  </Card.Body>
+                </Card>
+              </Col>
+            </Row>
+          </Card.Body>
+        </Card>
+        
         {/* Action Buttons */}
         <div className="d-flex gap-2 justify-content-end">
           <Button 
@@ -882,6 +1149,58 @@ Best regards,
           </Button>
         </div>
       </Form>
+      
+      {/* Maintenance Confirmation Modal */}
+      <Modal 
+        show={isModalVisible} 
+        onHide={hideMaintenanceModal}
+        backdrop="static"
+        keyboard={false}
+        centered
+      >
+        <Modal.Header className="bg-danger text-white">
+          <Modal.Title>
+            ⚠️ {maintenanceModal.title}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="danger" className="mb-3">
+            <Alert.Heading>🚨 CRITICAL WARNING</Alert.Heading>
+            <p className="mb-0">
+              This operation will permanently delete data and <strong>CANNOT BE UNDONE</strong>.
+            </p>
+          </Alert>
+          <p className="mb-0">{maintenanceModal.message}</p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button 
+            variant="secondary" 
+            onClick={hideMaintenanceModal}
+            disabled={clearMembersMutation.isLoading || clearNextScheduleMutation.isLoading || clearCurrentScheduleMutation.isLoading}
+          >
+            Cancel
+          </Button>
+          <Button 
+            variant="danger" 
+            onClick={() => {
+              console.log('Delete button clicked, executing handler');
+              if (maintenanceModal.confirmHandler) {
+                maintenanceModal.confirmHandler();
+              }
+            }}
+            disabled={clearMembersMutation.isLoading || clearNextScheduleMutation.isLoading || clearCurrentScheduleMutation.isLoading}
+          >
+            {(clearMembersMutation.isLoading || clearNextScheduleMutation.isLoading || clearCurrentScheduleMutation.isLoading) ? (
+              <>
+                <Spinner size="sm" className="me-2" />
+                Processing...
+              </>
+            ) : (
+              'Yes, Delete Permanently'
+            )}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   )
 }

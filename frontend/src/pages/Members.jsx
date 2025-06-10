@@ -540,8 +540,6 @@ const Members = () => {
                       if (event.target.files && event.target.files[0]) {
                         // Auto-submit the form when a file is selected
                         document.getElementById('csv-upload-form').submit();
-                        // Show a message to the user
-                        alert('Uploading CSV file... The page will refresh automatically when complete.');
                         
                         // Set up the iframe to listen for load events to detect when the upload is complete
                         const iframe = document.querySelector('iframe[name="csv-upload-frame"]');
