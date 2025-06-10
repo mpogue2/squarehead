@@ -555,6 +555,25 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                 if ($existingUser) {
                     $skipCount++;
                     
+                    // Update existing user's address and geocode if needed
+                    if (!empty($data['address']) && ($data['address'] !== ($existingUser['address'] ?? ''))) {
+                        try {
+                            // Use updateWithGeocoding to handle address change with geocoding
+                            $updateData = [
+                                'address' => $data['address'],
+                                // Include other fields that might have changed
+                                'phone' => $data['phone'] ?? $existingUser['phone'],
+                                'status' => $data['status'] ?? $existingUser['status'],
+                                'role' => $data['role'] ?? $existingUser['role'],
+                            ];
+                            
+                            $userModel->updateWithGeocoding($existingUser['id'], $updateData);
+                            error_log("CSV Import: Updated address with geocoding for user ID {$existingUser['id']}");
+                        } catch (Exception $e) {
+                            error_log("CSV Import: Error updating address for user ID {$existingUser['id']}: " . $e->getMessage());
+                        }
+                    }
+                    
                     // Even for skipped users, we'll update their partner/friend relationships
                     // Store relationship info for second pass
                     if (!empty($data['partner_first_name']) || !empty($data['partner_last_name']) || 
@@ -585,6 +604,23 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     'is_admin' => (strtolower($data['role'] ?? '') === 'admin') ? 1 : 0
                 ];
                 
+                // Geocode address if provided
+                if (!empty($userData['address'])) {
+                    try {
+                        $geocodingService = new GeocodingService();
+                        $coords = $geocodingService->geocodeAddress($userData['address']);
+                        
+                        if ($coords) {
+                            $userData['latitude'] = $coords['lat'];
+                            $userData['longitude'] = $coords['lng'];
+                            $userData['geocoded_at'] = date('Y-m-d H:i:s');
+                        }
+                    } catch (Exception $e) {
+                        // Log error but don't fail the creation
+                        error_log("CSV Import: Geocoding failed for new user: " . $e->getMessage());
+                    }
+                }
+
                 // Create user first
                 $newUser = $userModel->create($userData);
                 $importCount++;
@@ -675,12 +711,20 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
             }
         }
         
+        // Get count of users with geocoded addresses
+        $geocodedAddressCount = 0;
+        $stmt = $userModel->getDb()->query("SELECT COUNT(*) FROM users WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND geocoded_at IS NOT NULL");
+        if ($stmt) {
+            $geocodedAddressCount = (int)$stmt->fetchColumn();
+        }
+        
         // Prepare response
         $resultData = [
             'imported' => $importCount,
             'skipped' => $skipCount,
             'relationships_processed' => $relationshipsProcessed,
             'relationships_skipped' => $relationshipsSkipped,
+            'geocoded_addresses' => $geocodedAddressCount,
             'errors' => $errors
         ];
         
@@ -697,6 +741,7 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
         if (count($errors) > 0) {
             $message .= ", " . count($errors) . " errors occurred";
         }
+        $message .= ". {$geocodedAddressCount} users have geocoded addresses.";
         
         return ApiResponse::success($response, $resultData, $message);
         

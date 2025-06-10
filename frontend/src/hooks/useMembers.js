@@ -184,6 +184,33 @@ export const useMemberSelection = () => {
   }
 }
 
+// Hook for geocoding all member addresses
+export const useGeocodeAllAddresses = () => {
+  const queryClient = useQueryClient()
+  const { success, error } = useToast()
+  
+  return useMutation({
+    mutationFn: apiService.geocodeAllAddresses,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries(['members'])
+      const result = data.data || data
+      const geocoded = result.geocoded || 0
+      const errors = result.errors || []
+      
+      let message = `Geocoding completed: ${geocoded} addresses geocoded`
+      if (errors.length > 0) {
+        message += `, ${errors.length} errors occurred`
+      }
+      
+      success(message)
+    },
+    onError: (err) => {
+      console.error('Failed to geocode addresses:', err)
+      error('Failed to geocode addresses. Please try again.')
+    }
+  })
+}
+
 // Hook for CSV import/export
 export const useMemberImportExport = ({ onImportResults } = {}) => {
   const { success: showSuccess, error: showError } = useToast()

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Card, Alert, Spinner } from 'react-bootstrap'
-import { useMembers } from '../hooks/useMembers'
+import { Card, Alert, Spinner, Button } from 'react-bootstrap'
+import { useMembers, useGeocodeAllAddresses } from '../hooks/useMembers'
 import { useSettings } from '../hooks/useSettings'
+import { useAuth } from '../hooks/useAuth'
 
 const Map = () => {
   const mapRef = useRef(null)
@@ -10,6 +11,8 @@ const Map = () => {
   const [error, setError] = useState(null)
   const { data: members = [] } = useMembers()
   const { data: settings, isLoading: settingsLoading } = useSettings()
+  const { isAdmin } = useAuth()
+  const geocodeAddressesMutation = useGeocodeAllAddresses()
 
   // Default center coordinates for San Jose (fallback)
   const SAN_JOSE_CENTER = { lat: 37.3382, lng: -121.8863 }
@@ -318,7 +321,32 @@ const Map = () => {
 
   return (
     <div>
-      <h1>Member Locations Map</h1>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h1>Member Locations Map</h1>
+        {isAdmin && (
+          <Button 
+            variant="primary" 
+            onClick={() => geocodeAddressesMutation.mutate()}
+            disabled={geocodeAddressesMutation.isLoading}
+          >
+            {geocodeAddressesMutation.isLoading ? (
+              <>
+                <Spinner
+                  as="span"
+                  animation="border"
+                  size="sm"
+                  role="status"
+                  aria-hidden="true"
+                  className="me-2"
+                />
+                Geocoding...
+              </>
+            ) : (
+              'Geocode All Addresses'
+            )}
+          </Button>
+        )}
+      </div>
       
       {(isLoading || settingsLoading) && (
         <Card>
