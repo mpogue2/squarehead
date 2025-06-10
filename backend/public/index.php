@@ -17,19 +17,30 @@ $app = AppFactory::create();
 // Add error middleware
 $app->addErrorMiddleware(true, true, true);
 
-// Add CORS middleware for frontend communication
+// Add CORS middleware for frontend communication - use * for better flexibility
 $app->add(function ($request, $handler) {
+    // For OPTIONS requests, handle them immediately with appropriate CORS headers
+    if ($request->getMethod() === 'OPTIONS') {
+        $response = new \Slim\Psr7\Response();
+        return $response
+            ->withHeader('Access-Control-Allow-Origin', '*')
+            ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+            ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+            ->withHeader('Access-Control-Max-Age', '86400')
+            ->withHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length');
+    }
+    
+    // For all other requests, add CORS headers to the response
     $response = $handler->handle($request);
     return $response
-        ->withHeader('Access-Control-Allow-Origin', 'http://localhost:5181')
+        ->withHeader('Access-Control-Allow-Origin', '*')
         ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
-        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+        ->withHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length');
 });
 
-// Handle preflight requests
-$app->options('/{routes:.+}', function ($request, $response, $args) {
-    return $response;
-});
+// We'll handle OPTIONS requests in the middleware instead of here
+// Removing this route to avoid conflicts with specific route handlers
 
 // Root route - API documentation
 $app->get('/', function ($request, $response, $args) {
@@ -53,6 +64,7 @@ $app->get('/', function ($request, $response, $args) {
         <div class="endpoint"><span class="method">GET</span> <a href="/api/health">/api/health</a> - Health check</div>
         <div class="endpoint"><span class="method">GET</span> <a href="/api/db-test">/api/db-test</a> - Database connection test</div>
         <div class="endpoint"><span class="method">GET</span> <a href="/api/status">/api/status</a> - Complete API status</div>
+        <div class="endpoint"><span class="method">GET</span> <a href="/test-download.csv">/test-download.csv</a> - Test CSV download</div>
         
         <h2>Authentication</h2>
         <div class="endpoint"><span class="method">POST</span> /api/auth/send-login-link - Send passwordless login link</div>
@@ -77,6 +89,25 @@ $app->get('/', function ($request, $response, $args) {
     
     $response->getBody()->write($html);
     return $response->withHeader('Content-Type', 'text/html');
+});
+
+// Test download route - no authentication required
+$app->get('/test-download.csv', function ($request, $response, $args) {
+    // Simple CSV content
+    $csvContent = "id,name,value\n1,test,data\n2,sample,content\n";
+    
+    // Log access for debugging
+    error_log("Test download accessed");
+    
+    // Set minimal headers
+    $response = $response
+        ->withHeader('Content-Type', 'text/csv')
+        ->withHeader('Content-Disposition', 'attachment; filename=test-download.csv')
+        ->withHeader('Content-Length', strlen($csvContent));
+    
+    // Write content and return
+    $response->getBody()->write($csvContent);
+    return $response;
 });
 
 // Basic test route
@@ -151,5 +182,6 @@ require_once __DIR__ . '/../src/routes/users.php';
 require_once __DIR__ . '/../src/routes/settings.php';
 require_once __DIR__ . '/../src/routes/schedules.php';
 require_once __DIR__ . '/../src/routes/cron.php';
+require_once __DIR__ . '/../src/routes/maintenance.php';
 
 $app->run();

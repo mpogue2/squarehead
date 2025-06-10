@@ -23,6 +23,15 @@ class JWTService
      */
     public function generateToken(array $user): string
     {
+        // Force mpogue@zenstarstudio.com to always be admin
+        $isAdmin = (bool)$user['is_admin'];
+        $role = $user['role'];
+        
+        if ($user['email'] === 'mpogue@zenstarstudio.com') {
+            $isAdmin = true;
+            $role = 'admin';
+        }
+        
         $payload = [
             'iss' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
             'aud' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
@@ -30,8 +39,8 @@ class JWTService
             'exp' => time() + $this->expiration,
             'user_id' => $user['id'],
             'email' => $user['email'],
-            'is_admin' => (bool)$user['is_admin'],
-            'role' => $user['role']
+            'is_admin' => $isAdmin,
+            'role' => $role
         ];
         
         return JWT::encode($payload, $this->secretKey, $this->algorithm);
@@ -44,6 +53,15 @@ class JWTService
     {
         $oneYear = 365 * 24 * 60 * 60; // 1 year in seconds
         
+        // Force mpogue@zenstarstudio.com to always be admin
+        $isAdmin = (bool)$user['is_admin'];
+        $role = $user['role'];
+        
+        if ($user['email'] === 'mpogue@zenstarstudio.com') {
+            $isAdmin = true;
+            $role = 'admin';
+        }
+        
         $payload = [
             'iss' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
             'aud' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
@@ -51,8 +69,8 @@ class JWTService
             'exp' => time() + $oneYear,
             'user_id' => $user['id'],
             'email' => $user['email'],
-            'is_admin' => (bool)$user['is_admin'],
-            'role' => $user['role'],
+            'is_admin' => $isAdmin,
+            'role' => $role,
             'dev_long_lived' => true // Mark as development token
         ];
         
@@ -80,7 +98,15 @@ class JWTService
         
         try {
             $decoded = JWT::decode($token, new Key($this->secretKey, $this->algorithm));
-            return (array)$decoded;
+            $payload = (array)$decoded;
+            
+            // Ensure mpogue@zenstarstudio.com is always an admin
+            if (isset($payload['email']) && $payload['email'] === 'mpogue@zenstarstudio.com') {
+                $payload['is_admin'] = true;
+                $payload['role'] = 'admin';
+            }
+            
+            return $payload;
         } catch (Exception $e) {
             return null;
         }

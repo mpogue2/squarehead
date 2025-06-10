@@ -20,7 +20,13 @@ class ApiResponse
         }
         
         $response->getBody()->write(json_encode($responseData));
-        return $response->withHeader('Content-Type', 'application/json')->withStatus($status);
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Access-Control-Allow-Origin', '*')
+            ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+            ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+            ->withHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length')
+            ->withStatus($status);
     }
     
     public static function error(Response $response, string $message, int $status = 400, $errors = null): Response
@@ -35,7 +41,13 @@ class ApiResponse
         }
         
         $response->getBody()->write(json_encode($responseData));
-        return $response->withHeader('Content-Type', 'application/json')->withStatus($status);
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Access-Control-Allow-Origin', '*')
+            ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+            ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+            ->withHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length')
+            ->withStatus($status);
     }
     
     public static function notFound(Response $response, string $message = 'Resource not found'): Response
@@ -45,6 +57,10 @@ class ApiResponse
     
     public static function validationError(Response $response, array $errors, string $message = 'Validation failed'): Response
     {
+        // Ensure all validation errors have CORS headers
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Headers: X-Requested-With, Content-Type, Accept, Origin, Authorization');
+        header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS');
         return self::error($response, $message, 422, $errors);
     }
 }

@@ -61,7 +61,7 @@ REMAINING PHASES:
 
 11.1) MAP page: Duplicated addresses must jitter the star locations, so that all stars will be at least partially visible.
 
-11.2) MAP page: Cache the latLong's for each of the member's addresses on the Member's page (so they don't have to be looked up each time).  The cache must be updated whenever any member's address changes.  The latLongs do not need to be displayed anywhere.
+DONE 11.2) MAP page: Cache the latLong's for each of the member's addresses on the Member's page (so they don't have to be looked up each time).  The cache must be updated whenever any member's address changes.  The latLongs do not need to be displayed anywhere.
 
 DONE 11.3) Map page: Cache the latLong's for the dance hall location (so it doesn't have to be looked up each time).  The cache must be updated whenever the dance hall location is changed.
 
@@ -101,13 +101,13 @@ DONE 13.2) Login email: The Login email uses a title of literally "Squarehead Re
 =====================
 14. MEMBERS PAGE
 
-14.1) Testing CSV Upload on Members page: Make me a Members CSV file with 100 fake rows that I can use for testing CSV upload.  Addresses should be around San Jose CA. Provide a button on the Admin page for admins (only) to clear out all rows of the existing Member table.
+NOT NEEDED 14.1) Testing CSV Upload on Members page: Make me a Members CSV file with 100 fake rows that I can use for testing CSV upload.  Addresses should be around San Jose CA. Provide a button on the Admin page for admins (only) to clear out all rows of the existing Member table.
 
-14.2) Members page: Add a Birthday field (just month/day), sortable.
+DONE 14.2) Members page: Add a Birthday field (just numeric month/day), sortable.
 
 14.3) Members page: Add an LOA date field for each member.  When a member goes on LOA, and their status is "LOA", this field will contain the last known date that they will be out (month/day/year).  Set this with a calendar widget.  It's OK if this field is blank, which means "indefinite LOA".  Do not automatically take them off of LOA at the end of their LOA (we'll do that manually).
 
-14.4) Members page: make the PDF export button work.  Output should be a professional-quality table of member data, in portrait format, suitable for printing.  The PDF output should use the full width of an 8.5x11" sheet of paper, and it can be more than 1 page long (and should be paginated accordingly).
+DONE 14.4) Members page: make the PDF export button work.  Output should be a professional-quality table of member data, in portrait format, suitable for printing.  The PDF output should use the full width of an 8.5x11" sheet of paper, and it can be more than 1 page long (and should be paginated accordingly).
 
 =====================
 15. NEXT/CURRENT SCHEDULE PAGES
@@ -129,6 +129,6 @@ DONE 13.2) Login email: The Login email uses a title of literally "Squarehead Re
     
 15.2) Current/Next Schedule pages: There needs to be 4 people (not 2) who are Squareheads for each given date.
 
-15.3) Current/Next Schedule pages: The date columns should be mm/dd/yyyy, rather than "Jun 3, 2025", to save space.
+15.3) Current/Next Schedule pages: The date columns should be mm/dd/yy, rather than "Jun 3, 2025", to save space.
 
 15.4) Next Schedule Page: When creating a row for a dance, dates that are the 5th Wednesdays of a month should automatically set the Club Night field to: "Fifth Wednesday".  A simple way of determining this is if the day part of the date is 29 or greater.

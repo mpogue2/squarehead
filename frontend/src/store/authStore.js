@@ -72,9 +72,8 @@ const useAuthStore = create(
           _hasHydrated: state._hasHydrated
         })
         
-        // DEVELOPMENT AUTO-LOGIN DISABLED FOR SECURITY
-        // Uncomment the following block only for development convenience:
-        /*
+        // DEVELOPMENT AUTO-LOGIN ENABLED FOR TESTING
+        // Comment this block out when done testing
         if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && 
             (!state.isAuthenticated || !state.user || !state.token)) {
           console.log('Development mode: Auto-logging in as admin')
@@ -92,7 +91,6 @@ const useAuthStore = create(
           })
           return
         }
-        */
         
         if (state.token && !state.isTokenValid()) {
           console.log('Token expired, logging out')

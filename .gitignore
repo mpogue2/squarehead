@@ -115,3 +115,4 @@ dist
 # Temporary folders
 tmp/
 temp/
+**/.claude/settings.local.json
