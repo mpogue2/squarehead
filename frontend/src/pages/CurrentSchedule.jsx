@@ -1,19 +1,25 @@
 import React, { useState } from 'react'
-import { Container, Row, Col, Card, Table, Badge, Alert, Spinner, Button } from 'react-bootstrap'
-import { FaCalendarAlt, FaUsers, FaInfoCircle, FaExclamationTriangle, FaEdit } from 'react-icons/fa'
+import { Container, Row, Col, Card, Table, Badge, Alert, Spinner, Button, OverlayTrigger, Tooltip } from 'react-bootstrap'
+import { FaCalendarAlt, FaUsers, FaInfoCircle, FaExclamationTriangle, FaEdit, FaCopy } from 'react-icons/fa'
 import { useCurrentSchedule, useUpdateAssignment } from '../hooks/useSchedules'
+import { useMembers } from '../hooks/useMembers'
 import AssignmentEditModal from '../components/schedules/AssignmentEditModal'
 import useAuthStore from '../store/authStore'
 import { formatDate, formatTableDate } from '../utils/dateUtils'
+import { formatScheduleForClipboard, copyToClipboard } from '../utils/scheduleUtils'
+import { useToast } from '../components/ToastProvider'
 
 const CurrentSchedule = () => {
   const { user } = useAuthStore()
   const { data: scheduleData, isLoading, isError, error } = useCurrentSchedule()
+  const { data: membersData } = useMembers()
   const updateAssignment = useUpdateAssignment()
+  const { success, error: showError } = useToast()
   
   // State for assignment edit modal
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingAssignment, setEditingAssignment] = useState(null)
+  const [copySuccess, setCopySuccess] = useState(false)
 
   // Get club night type badge variant
   const getClubNightVariant = (type) => {
@@ -55,6 +61,50 @@ const CurrentSchedule = () => {
       setEditingAssignment(null)
     } catch (err) {
       console.error('Failed to update assignment:', err)
+    }
+  }
+  
+  // Handle copy schedule to clipboard
+  const handleCopySchedule = async () => {
+    if (!assignments || assignments.length === 0) {
+      showError('No schedule data to copy')
+      return
+    }
+    
+    // Create a Map of user IDs to their partner IDs for quick lookup
+    const partnerMap = new Map()
+    
+    if (membersData && Array.isArray(membersData)) {
+      console.log('Members data for partner lookup:', membersData.length, 'members');
+      
+      // Count how many members have partners
+      const partnersCount = membersData.filter(m => m.partner_id).length;
+      console.log(`Found ${partnersCount} members with partners defined`);
+      
+      membersData.forEach(member => {
+        if (member.partner_id) {
+          partnerMap.set(member.id.toString(), member.partner_id.toString())
+          console.log(`Added partner relationship: ${member.id} -> ${member.partner_id}`);
+        }
+      })
+    }
+    
+    console.log(`Partner map contains ${partnerMap.size} relationships`);
+    
+    // Log the first few assignments to debug
+    if (assignments.length > 0) {
+      console.log('Sample assignment data:', assignments[0]);
+    }
+    
+    const formattedSchedule = formatScheduleForClipboard(assignments, partnerMap)
+    const copied = await copyToClipboard(formattedSchedule)
+    
+    if (copied) {
+      setCopySuccess(true)
+      success('Schedule copied to clipboard!')
+      setTimeout(() => setCopySuccess(false), 2000)
+    } else {
+      showError('Failed to copy schedule to clipboard')
     }
   }
 
@@ -145,7 +195,7 @@ const CurrentSchedule = () => {
           <Card className="mb-4">
             <Card.Body>
               <Row>
-                <Col md={6}>
+                <Col md={5}>
                   <h5 className="card-title">{schedule.name}</h5>
                   <p className="text-muted mb-2">
                     <strong>Period:</strong> {formatDate(schedule.start_date)} - {formatDate(schedule.end_date)}
@@ -154,7 +204,7 @@ const CurrentSchedule = () => {
                     <strong>Schedule Type:</strong> <Badge bg="success">Current</Badge>
                   </p>
                 </Col>
-                <Col md={6}>
+                <Col md={4}>
                   <div className="d-flex justify-content-md-end">
                     <div className="text-center">
                       <FaUsers className="text-primary mb-2" size={32} />
@@ -162,6 +212,26 @@ const CurrentSchedule = () => {
                       <small className="text-muted">Total Assignments</small>
                     </div>
                   </div>
+                </Col>
+                <Col md={3} className="d-flex justify-content-md-end align-items-center">
+                  <OverlayTrigger
+                    placement="top"
+                    overlay={
+                      <Tooltip id="tooltip-copy">
+                        {copySuccess ? 'Copied!' : 'Copy schedule to clipboard'}
+                      </Tooltip>
+                    }
+                  >
+                    <Button 
+                      variant={copySuccess ? "success" : "outline-secondary"}
+                      size="sm"
+                      onClick={handleCopySchedule}
+                      className="d-flex align-items-center"
+                    >
+                      <FaCopy className="me-2" />
+                      <span>Copy to Clipboard</span>
+                    </Button>
+                  </OverlayTrigger>
                 </Col>
               </Row>
             </Card.Body>

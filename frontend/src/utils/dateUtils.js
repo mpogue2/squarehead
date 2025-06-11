@@ -25,6 +25,23 @@ export const parseLocalDate = (dateString) => {
 }
 
 /**
+ * Format date as "MMM DD" (e.g., "Jun 09")
+ * @param {string} dateString - Date in YYYY-MM-DD format
+ * @returns {string} - Formatted date string or empty string if invalid
+ */
+export const formatClipboardDate = (dateString) => {
+  if (!dateString) return ''
+  
+  const date = parseLocalDate(dateString)
+  if (!date) return ''
+  
+  const month = date.toLocaleDateString('en-US', { month: 'short' })
+  const day = date.getDate().toString().padStart(2, '0')
+  
+  return `${month} ${day}`
+}
+
+/**
  * Format date for full display (e.g., "Monday, June 9, 2025")
  * @param {string} dateString - Date in YYYY-MM-DD format
  * @returns {string} - Formatted date string or 'Not set' if invalid
