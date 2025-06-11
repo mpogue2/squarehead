@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 - Frontend: `npm run dev` (dev server), `npm run build` (production)
-- Backend: `composer start` (PHP server on port 8000)
+- Backend: `./run-server.sh` (PHP server on port 8000)
 - Lint: `npm run lint` (frontend only)
 - Test: `composer test` (backend tests)
+
+Note: The `composer start` command has a 300-second timeout issue. Use `./run-server.sh` instead for longer sessions.
 
 ## Code Style Guidelines
 - **Frontend**: React functional components with hooks
