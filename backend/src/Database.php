@@ -76,6 +76,17 @@ class Database
         }
     }
     
+    /**
+     * Get the database type (sqlite or mysql)
+     * 
+     * @return string The database type: 'sqlite' or 'mysql'
+     */
+    public function getType(): string
+    {
+        $dbname = $_ENV['DB_NAME'] ?? '/Users/mpogue/squarehead/backend/database/squarehead.sqlite';
+        return (strpos($dbname, '.sqlite') !== false) ? 'sqlite' : 'mysql';
+    }
+    
     public static function testConnection(): array
     {
         try {
