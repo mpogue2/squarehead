@@ -62,7 +62,7 @@ const Dashboard = () => {
           <Card className="text-center">
             <Card.Body>
               <Card.Title>Database</Card.Title>
-              <h2 className="text-success">SQLite</h2>
+              <h2 className="text-success">{apiStatus?.database?.database_type || 'Database'}</h2>
               <small className="text-muted">Connected</small>
             </Card.Body>
           </Card>
