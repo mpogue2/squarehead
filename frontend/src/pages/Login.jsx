@@ -20,10 +20,22 @@ const Login = () => {
     const token = searchParams.get('token')
     if (token && !tokenValidated.current) {
       console.log('Token found in URL:', token)
+      console.log('Current auth state:', {
+        isAuthenticated,
+        tokenValidated: tokenValidated.current
+      })
       tokenValidated.current = true // Mark as validated to prevent double calls
+      
+      // Clear any existing auth before validating new token
+      if (isAuthenticated) {
+        console.log('Clearing existing authentication before validating new token')
+        useAuthStore.getState().logout()
+      }
+      
+      console.log('Validating token...')
       validateToken.mutate(token)
     }
-  }, [searchParams]) // Remove validateToken from dependencies
+  }, [searchParams, isAuthenticated])
   
   // Redirect if already authenticated
   useEffect(() => {
@@ -36,7 +48,45 @@ const Login = () => {
   useEffect(() => {
     if (validateToken.isSuccess) {
       console.log('Token validation successful, redirecting...')
-      navigate('/dashboard')
+      
+      // Log current auth state before redirect
+      const authState = useAuthStore.getState()
+      console.log('Auth state before redirect:', {
+        isAuthenticated: authState.isAuthenticated,
+        hasUser: !!authState.user,
+        hasToken: !!authState.token,
+        user: authState.user
+      })
+      
+      // Ensure we have authenticated state before redirecting
+      if (authState.isAuthenticated && authState.token) {
+        console.log('Redirecting to dashboard...')
+        navigate('/dashboard')
+      } else {
+        console.error('Token validation successful but auth state is not set correctly')
+        
+        // Try setting the auth state again
+        console.log('Attempting to set auth state again...')
+        if (validateToken.data?.status === 'success') {
+          authState.login(
+            validateToken.data.data.token,
+            validateToken.data.data.user
+          )
+          
+          // Log the state again
+          setTimeout(() => {
+            const newAuthState = useAuthStore.getState()
+            console.log('Auth state after manual update:', {
+              isAuthenticated: newAuthState.isAuthenticated,
+              hasUser: !!newAuthState.user,
+              hasToken: !!newAuthState.token
+            })
+            
+            // Now redirect
+            navigate('/dashboard')
+          }, 100)
+        }
+      }
     }
   }, [validateToken.isSuccess, navigate])
   
@@ -104,6 +154,23 @@ const Login = () => {
                   <Alert.Heading>Login Link Sent!</Alert.Heading>
                   <p>We've sent a login link to <strong>{email}</strong>.</p>
                   <p>Please check your email and click the link to log in.</p>
+                  
+                  {/* Display development token info if available */}
+                  {sendLoginLink.data?.data?.development_only && (
+                    <div className="mt-3 p-2 bg-light border rounded">
+                      <p className="mb-1"><strong>Development Login Information:</strong></p>
+                      <p className="mb-1 text-monospace">
+                        <small>Token: {sendLoginLink.data.data.development_only.token}</small>
+                      </p>
+                      <p className="mb-0">
+                        <a href={sendLoginLink.data.data.development_only.login_url} 
+                           className="btn btn-sm btn-outline-primary">
+                          Login with this token
+                        </a>
+                      </p>
+                    </div>
+                  )}
+                  
                   <hr />
                   <div className="text-center">
                     <Button 
@@ -135,7 +202,22 @@ const Login = () => {
                     
                     {sendLoginLink.isError && (
                       <Alert variant="danger">
-                        Failed to send login link. Please try again.
+                        <Alert.Heading>Login Link Error</Alert.Heading>
+                        <p>Failed to send login link: {sendLoginLink.error?.response?.data?.message || 'Unknown error'}</p>
+                        {sendLoginLink.error?.response?.data?.data?.development_only && (
+                          <div className="mt-3 p-2 bg-light border rounded">
+                            <p className="mb-1"><strong>Development Login Information:</strong></p>
+                            <p className="mb-1 text-monospace">
+                              <small>Token: {sendLoginLink.error.response.data.data.development_only.token}</small>
+                            </p>
+                            <p className="mb-0">
+                              <a href={sendLoginLink.error.response.data.data.development_only.login_url} 
+                                 className="btn btn-sm btn-outline-primary">
+                                Login with this token
+                              </a>
+                            </p>
+                          </div>
+                        )}
                       </Alert>
                     )}
                     

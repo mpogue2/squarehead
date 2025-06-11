@@ -29,7 +29,7 @@ class ApiResponse
             ->withStatus($status);
     }
     
-    public static function error(Response $response, string $message, int $status = 400, $errors = null): Response
+    public static function error(Response $response, string $message, int $status = 400, $errors = null, $data = null): Response
     {
         $responseData = [
             'status' => 'error',
@@ -38,6 +38,10 @@ class ApiResponse
         
         if ($errors !== null) {
             $responseData['errors'] = $errors;
+        }
+        
+        if ($data !== null) {
+            $responseData['data'] = $data;
         }
         
         $response->getBody()->write(json_encode($responseData));

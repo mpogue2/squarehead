@@ -36,14 +36,29 @@ class EmailService
             $fromEmail = $this->settingsModel->get('email_from_address') ?: ($_ENV['MAIL_FROM'] ?? 'noreply@squareheadclub.local');
             $fromName = $this->settingsModel->get('email_from_name') ?: ($_ENV['MAIL_FROM_NAME'] ?? 'Square Dance Club');
             
+            // Check for development environment
+            $isDevelopment = (getenv('APP_ENV') === 'development' || !getenv('APP_ENV'));
+            
+            // Log the settings we're using
+            error_log("Email configuration using: Host={$smtpHost}, Port={$smtpPort}, Auth=" . (!empty($smtpUsername) ? 'Yes' : 'No'));
+            
             // Server settings
             $this->mailer->isSMTP();
             $this->mailer->Host       = $smtpHost;
             $this->mailer->SMTPAuth   = !empty($smtpUsername);
             $this->mailer->Username   = $smtpUsername;
             $this->mailer->Password   = $smtpPassword;
-            $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-            $this->mailer->Port       = (int)$smtpPort;
+            
+            // In development mode, don't require encryption unless explicitly set
+            if ($isDevelopment && empty($_ENV['MAIL_ENCRYPTION'])) {
+                $this->mailer->SMTPSecure = '';
+                $this->mailer->SMTPAutoTLS = false;
+                error_log("Development mode: Disabling SMTP encryption for easier testing");
+            } else {
+                $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+            }
+            
+            $this->mailer->Port = (int)$smtpPort;
             
             // Default sender
             $this->mailer->setFrom($fromEmail, $fromName);
@@ -52,8 +67,14 @@ class EmailService
             $this->mailer->isHTML(true);
             $this->mailer->CharSet = 'UTF-8';
             
+            // For development mode, set a longer timeout
+            if ($isDevelopment) {
+                $this->mailer->Timeout = 30; // 30 seconds timeout instead of default 10
+            }
+            
         } catch (Exception $e) {
             error_log("Email configuration error: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
         }
     }
     
@@ -62,34 +83,63 @@ class EmailService
      */
     public function sendLoginLink(string $email, string $token): bool
     {
-        // DEVELOPMENT: Comment out the next block to force real email sending
-        /*
-        if (($_ENV['APP_ENV'] ?? 'development') === 'development') {
-            // Generate frontend URL instead of backend URL
-            $loginUrl = "http://localhost:5181/login?token=" . urlencode($token);
-            error_log("LOGIN LINK for {$email}: {$loginUrl}");
-            
-            // Return true to simulate successful email sending
-            return true;
+        // Log for debugging regardless of whether email sends
+        $loginUrl = "http://localhost:5181/login?token=" . urlencode($token);
+        $logMessage = "LOGIN LINK for {$email}: {$loginUrl}";
+        error_log($logMessage);
+        
+        // Ensure logs directory exists
+        if (!is_dir(__DIR__ . '/../../logs')) {
+            mkdir(__DIR__ . '/../../logs', 0777, true);
         }
-        */
+        
+        // Write to log files (still do this for backup)
+        file_put_contents(__DIR__ . '/../../logs/login_links.log', date('[Y-m-d H:i:s] ') . $logMessage . PHP_EOL, FILE_APPEND);
         
         try {
-            $loginUrl = "http://localhost:5181/login?token=" . urlencode($token);
-            
+            // Configure mailer for this specific email
             $this->mailer->clearAddresses();
             $this->mailer->addAddress($email);
             
-            // Use specific login subject template
+            // Get club settings for email
             $clubName = $this->settingsModel->get('club_name') ?: 'Square Dance Club';
-            $this->mailer->Subject = "{$clubName} Management System - Login";
+            
+            // Set subject and content
+            $this->mailer->Subject = "{$clubName} Login Link";
             $this->mailer->Body = $this->getLoginEmailTemplate($loginUrl);
             $this->mailer->AltBody = "Click this link to log in: " . $loginUrl;
             
-            return $this->mailer->send();
+            // Log detailed email settings for debugging
+            error_log("Attempting to send real email with the following settings:");
+            error_log("SMTP Host: " . $this->mailer->Host);
+            error_log("SMTP Port: " . $this->mailer->Port);
+            error_log("SMTP Auth: " . ($this->mailer->SMTPAuth ? 'Yes' : 'No'));
+            error_log("From: " . $this->mailer->From);
+            error_log("To: " . $email);
+            
+            // For development, use more verbose debugging
+            if (getenv('APP_ENV') === 'development' || !getenv('APP_ENV')) {
+                $this->mailer->SMTPDebug = 2; // 2 = client and server messages
+                $this->mailer->Debugoutput = function($str, $level) {
+                    error_log("SMTP Debug: $str");
+                };
+            }
+            
+            // Send the email
+            $result = $this->mailer->send();
+            error_log("Email send result: " . ($result ? 'Success' : 'Failed'));
+            
+            // Reset debug level
+            $this->mailer->SMTPDebug = 0;
+            
+            return $result;
             
         } catch (Exception $e) {
             error_log("Email sending error: " . $e->getMessage());
+            
+            // Log the full exception trace for better debugging
+            error_log("Stack trace: " . $e->getTraceAsString());
+            
             return false;
         }
     }

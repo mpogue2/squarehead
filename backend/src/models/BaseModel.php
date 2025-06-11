@@ -72,4 +72,35 @@ abstract class BaseModel
     {
         return array_intersect_key($data, array_flip($this->fillable));
     }
+    
+    /**
+     * Get the type of database being used
+     */
+    protected function getDatabaseType(): string
+    {
+        // Try to detect the database type from PDO
+        $driver = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        
+        // Check for SQLite
+        if ($driver === 'sqlite') {
+            return 'sqlite';
+        }
+        
+        // Check for MySQL/MariaDB
+        if ($driver === 'mysql') {
+            return 'mysql';
+        }
+        
+        // Default to MySQL/MariaDB syntax
+        return 'mysql';
+    }
+    
+    /**
+     * Get the appropriate date function for the current database
+     */
+    protected function getCurrentDateFunction(): string
+    {
+        $dbType = $this->getDatabaseType();
+        return $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
+    }
 }

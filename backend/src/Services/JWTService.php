@@ -82,10 +82,14 @@ class JWTService
      */
     public function validateToken(string $token): ?array
     {
+        // Log the token validation attempt
+        error_log("JWT validation attempt for token: " . substr($token, 0, 10) . "...");
+        
         // Development mode bypass
         if ($token === 'dev-token-valid' && 
             (isset($_ENV['APP_ENV']) && $_ENV['APP_ENV'] === 'development') || 
             !isset($_ENV['APP_ENV'])) {
+            error_log("Using development token bypass");
             return [
                 'user_id' => 1,
                 'email' => 'mpogue@zenstarstudio.com',
@@ -100,6 +104,9 @@ class JWTService
             $decoded = JWT::decode($token, new Key($this->secretKey, $this->algorithm));
             $payload = (array)$decoded;
             
+            // Log successful validation
+            error_log("JWT validation successful for user: " . ($payload['email'] ?? 'unknown'));
+            
             // Ensure mpogue@zenstarstudio.com is always an admin
             if (isset($payload['email']) && $payload['email'] === 'mpogue@zenstarstudio.com') {
                 $payload['is_admin'] = true;
@@ -108,6 +115,16 @@ class JWTService
             
             return $payload;
         } catch (Exception $e) {
+            // Log the validation error
+            error_log("JWT validation failed: " . $e->getMessage());
+            error_log("Token attempted: " . $token);
+            
+            // Include more debugging info in development
+            if ((isset($_ENV['APP_ENV']) && $_ENV['APP_ENV'] === 'development') || !isset($_ENV['APP_ENV'])) {
+                error_log("JWT debug info - Algorithm: {$this->algorithm}, Secret key first 5 chars: " . substr($this->secretKey, 0, 5));
+                error_log("JWT exception stack trace: " . $e->getTraceAsString());
+            }
+            
             return null;
         }
     }
