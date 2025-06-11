@@ -89,17 +89,42 @@ export const useUpdateMember = () => {
   const updateMember = useMembersStore((state) => state.updateMember)
   const { success, error } = useToast()
   
+  // Add an event listener for manual refetching
+  useEffect(() => {
+    const handleRefetch = () => {
+      console.log('Manually refetching members from event');
+      queryClient.invalidateQueries(['members']);
+    };
+    
+    window.addEventListener('refetch-members', handleRefetch);
+    
+    return () => {
+      window.removeEventListener('refetch-members', handleRefetch);
+    };
+  }, [queryClient]);
+  
   return useMutation({
     mutationFn: ({ id, ...updates }) => {
       console.log('Calling API to update user ID:', id, 'with data:', updates);
+      
+      // Log the specific partner_id and friend_id values for debugging
+      console.log('Partner ID in API request:', updates.partner_id);
+      console.log('Friend ID in API request:', updates.friend_id);
+      
       return apiService.updateUser(id, updates);
     },
     onSuccess: (data, variables) => {
       console.log('Update member API success:', data);
       const member = data.data || data
       console.log('Member data being stored:', member);
+      
+      // Update the store
       updateMember(variables.id, member)
+      
+      // Force a full refetch to make sure UI is updated with fresh data
       queryClient.invalidateQueries(['members'])
+      
+      // Show success message
       success('Member updated successfully!')
     },
     onError: (err) => {

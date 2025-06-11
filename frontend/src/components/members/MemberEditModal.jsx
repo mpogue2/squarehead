@@ -156,44 +156,55 @@ const MemberEditModal = ({ show, onHide }) => {
         birthday: formData.birthday.trim() || null
       }
       
+      console.log('Submit data prepared:', submitData);
+      
       if (isEditing) {
-        console.log('Updating member with data:', {
+        console.log('Updating member with ID:', selectedMember.id, 'and data:', submitData);
+        
+        // Explicitly log the partner_id value
+        console.log('Partner ID being submitted:', submitData.partner_id);
+        
+        await updateMember.mutateAsync({
           id: selectedMember.id,
           ...submitData
         });
-        try {
-          await updateMember.mutateAsync({
-            id: selectedMember.id,
-            ...submitData
-          });
-          console.log('Member updated successfully');
-        } catch (err) {
-          console.error('Error updating member:', err);
-          if (err.response) {
-            console.error('Response data:', err.response.data);
-          }
-          throw err; // Re-throw to let the outer catch handler deal with it
-        }
+        
+        console.log('Member updated successfully');
+        
+        // Force a refresh of the members list to ensure UI is updated
+        setTimeout(() => {
+          // This triggers React Query to refetch members
+          window.dispatchEvent(new CustomEvent('refetch-members'));
+        }, 100);
+        
+        // Close the modal
+        onHide();
       } else {
         console.log('Creating new member with data:', submitData);
-        try {
-          await createMember.mutateAsync(submitData);
-          console.log('Member created successfully');
-        } catch (err) {
-          console.error('Error creating member:', err);
-          if (err.response) {
-            console.error('Response data:', err.response.data);
-          }
-          throw err; // Re-throw to let the outer catch handler deal with it
-        }
+        
+        await createMember.mutateAsync(submitData);
+        console.log('Member created successfully');
+        
+        // Close the modal
+        onHide();
+      }
+    } catch (error) {
+      console.error('Error saving member:', error);
+      
+      // Log more details about the error
+      if (error.response) {
+        console.error('API Error Response:', error.response.status, error.response.data);
+      } else if (error.request) {
+        console.error('No response received', error.request);
+      } else {
+        console.error('Error details:', error.message);
       }
       
-      onHide()
-    } catch (error) {
-      console.error('Error saving member:', error)
-      // Error will be handled by the hook's onError callback
+      // Error is handled by the hook's onError callback, but we also show an alert
+      // to make sure the user is aware that the operation failed
+      alert('Failed to save member. Please check the console for details.');
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
   }  
   const handleClose = () => {
