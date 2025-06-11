@@ -179,9 +179,15 @@ const Map = () => {
       
       const addrInfo = processedAddresses[address]
       if (addrInfo.count > 0) {
-        // Apply jittering - small random offset to make markers visible
-        const jitterRadius = 0.001 // About 100 meters
-        const angle = (addrInfo.count * 60) % 360 // Spread markers in a circle
+        // Apply jittering - calculate offset to make markers visible
+        // Use increasing radius for more duplicates
+        const baseJitterRadius = 0.002 // About 200 meters base
+        const growthFactor = 1 + (addrInfo.count * 0.25) // Increase radius for more duplicates
+        const jitterRadius = baseJitterRadius * growthFactor
+        
+        // Use golden angle to distribute points more evenly
+        const goldenAngle = 137.5 // degrees
+        const angle = (addrInfo.count * goldenAngle) % 360
         const radians = (angle * Math.PI) / 180
         
         lat += jitterRadius * Math.cos(radians)
@@ -217,9 +223,15 @@ const Map = () => {
               
               const addrInfo = processedAddresses[address]
               if (addrInfo.count > 0) {
-                // Apply jittering - small random offset to make markers visible
-                const jitterRadius = 0.001 // About 100 meters
-                const angle = (addrInfo.count * 60) % 360 // Spread markers in a circle
+                // Apply jittering - calculate offset to make markers visible
+                // Use increasing radius for more duplicates
+                const baseJitterRadius = 0.002 // About 200 meters base
+                const growthFactor = 1 + (addrInfo.count * 0.25) // Increase radius for more duplicates
+                const jitterRadius = baseJitterRadius * growthFactor
+                
+                // Use golden angle to distribute points more evenly
+                const goldenAngle = 137.5 // degrees
+                const angle = (addrInfo.count * goldenAngle) % 360
                 const radians = (angle * Math.PI) / 180
                 
                 lat += jitterRadius * Math.cos(radians)
