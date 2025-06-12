@@ -184,7 +184,39 @@ export const apiService = {
   // Settings endpoints
   getSettings: () => api.get('/settings'),
   getSetting: (key) => api.get(`/settings/${key}`),
-  updateSettings: (settings) => api.put('/settings', settings),
+  updateSettings: (settings) => {
+    console.log('API updateSettings called with data keys:', Object.keys(settings))
+    
+    // Create a new sanitized settings object for the request
+    const sanitizedSettings = { ...settings }
+    
+    // Ensure logo data is properly handled
+    if (sanitizedSettings.club_logo_data) {
+      console.log('Club logo data present, length:', sanitizedSettings.club_logo_data.length)
+      
+      // Ensure it's a string (not an object or anything else)
+      if (typeof sanitizedSettings.club_logo_data !== 'string') {
+        console.error('Logo data is not a string, converting to string')
+        
+        // Try to convert to string if possible
+        try {
+          sanitizedSettings.club_logo_data = String(sanitizedSettings.club_logo_data)
+        } catch (e) {
+          console.error('Failed to convert logo data to string, removing it', e)
+          delete sanitizedSettings.club_logo_data
+        }
+      }
+    }
+    
+    // Add content-type header for large payloads
+    const config = {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }
+    
+    return api.put('/settings', sanitizedSettings, config)
+  },
   updateSetting: (key, value) => api.put(`/settings/${key}`, { value }),
 
   // Auth endpoints

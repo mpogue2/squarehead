@@ -82,6 +82,9 @@ const Admin = () => {
     club_day_of_week: 'Wednesday',
     reminder_days: '14,7,3,1',
     club_logo_url: '',
+    club_logo_data: null,
+    club_logo_file: null,
+    club_logo_preview: null,
     google_api_key: '',
     email_from_name: '',
     email_from_address: '',
@@ -287,10 +290,15 @@ const Admin = () => {
         club_name: settingsData.club_name || 'Rockin\' Jokers',
         club_subtitle: settingsData.club_subtitle || 'SSD/Plus/Round dance club',
         club_address: settingsData.club_address || '191 Gunston Way, San Jose, CA',
+        club_lat: settingsData.club_lat || '',
+        club_lng: settingsData.club_lng || '',
         club_color: settingsData.club_color || '#EA3323',
         club_day_of_week: settingsData.club_day_of_week || 'Wednesday',
         reminder_days: settingsData.reminder_days || '14,7,3,1',
         club_logo_url: settingsData.club_logo_url || '',
+        club_logo_data: settingsData.club_logo_data || null,
+        club_logo_file: null,
+        club_logo_preview: null,
         google_api_key: settingsData.google_api_key || '',
         email_from_name: settingsData.email_from_name || 'Rockin\' Jokers',
         email_from_address: settingsData.email_from_address || 'noreply@rockinjokersclub.com',
@@ -437,10 +445,77 @@ Best regards,
     }
     
     try {
-      await updateSettingsMutation.mutateAsync(formData)
+      // Create a copy of form data for submission
+      const submissionData = { ...formData }
+      
+      // If we have a new logo file, process it
+      if (formData.club_logo_file) {
+        console.log('Uploading logo file:', formData.club_logo_file.name)
+        
+        // Create a new FormData object for the file upload
+        const logoFormData = new FormData()
+        logoFormData.append('logo', formData.club_logo_file)
+        
+        // Get auth token from auth store
+        const authStore = JSON.parse(localStorage.getItem('auth-storage') || '{}')
+        const token = authStore.state?.token || 'dev-token-valid'
+        
+        // Upload the logo file first
+        const logoResponse = await fetch('http://localhost:8000/api/settings/upload-logo', {
+          method: 'POST',
+          body: logoFormData,
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (!logoResponse.ok) {
+          const errorText = await logoResponse.text()
+          console.error('Logo upload failed:', errorText)
+          throw new Error(`Failed to upload logo: ${errorText}`)
+        }
+        
+        const logoResult = await logoResponse.json()
+        console.log('Logo upload successful:', logoResult)
+        
+        // Update submission data with the new logo information
+        // Ensure logo data is a string
+        if (typeof logoResult.data.logo_data === 'string') {
+          submissionData.club_logo_data = logoResult.data.logo_data
+          console.log('Logo data is a string, length:', logoResult.data.logo_data.length)
+        } else {
+          console.error('Logo data is not a string:', typeof logoResult.data.logo_data)
+          throw new Error('Logo data is not in the expected format')
+        }
+      } else if (formData.club_logo_data) {
+        // Keep existing logo data if we're not uploading a new one
+        console.log('Using existing logo data, length:', formData.club_logo_data.length)
+        submissionData.club_logo_data = formData.club_logo_data
+      } else {
+        console.log('No logo data to submit')
+      }
+      
+      // Remove file and preview from submission data
+      delete submissionData.club_logo_file
+      delete submissionData.club_logo_preview
+      
+      // Log settings data without the potentially large logo data to avoid console errors
+      const logData = { ...submissionData }
+      if (logData.club_logo_data) {
+        logData.club_logo_data = `[base64 data, length: ${logData.club_logo_data.length}]`
+      }
+      console.log('Submitting settings data:', logData)
+      
+      // Submit the rest of the form data
+      await updateSettingsMutation.mutateAsync(submissionData)
       setIsDirty(false)
+      success('Settings saved successfully')
+      
+      // Force refresh settings
+      queryClient.invalidateQueries(['settings'])
     } catch (error) {
       console.error('Failed to save settings:', error)
+      showError(`Failed to save settings: ${error.message}`)
     }
   }
   
@@ -458,6 +533,9 @@ Best regards,
         club_day_of_week: settingsData.club_day_of_week || 'Wednesday',
         reminder_days: settingsData.reminder_days || '14,7,3,1',
         club_logo_url: settingsData.club_logo_url || '',
+        club_logo_data: settingsData.club_logo_data || null,
+        club_logo_file: null,
+        club_logo_preview: null,
         google_api_key: settingsData.google_api_key || '',
         email_from_name: settingsData.email_from_name || 'Rockin\' Jokers',
         email_from_address: settingsData.email_from_address || 'noreply@rockinjokersclub.com',
@@ -642,23 +720,91 @@ Best regards,
               </Col>
               <Col md={6}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Club Logo URL</Form.Label>
-                  <Form.Control
-                    type="url"
-                    value={formData.club_logo_url}
-                    onChange={(e) => handleChange('club_logo_url', e.target.value)}
-                    isInvalid={!!validationErrors.club_logo_url}
-                    placeholder="https://example.com/logo.png"
-                  />
+                  <Form.Label>Club Logo</Form.Label>
+                  <InputGroup>
+                    <Form.Control
+                      type="file"
+                      accept=".jpg,.jpeg,.png"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.readAsDataURL(file);
+                          reader.onload = () => {
+                            handleChange('club_logo_file', file);
+                            handleChange('club_logo_preview', reader.result);
+                          };
+                        }
+                      }}
+                      isInvalid={!!validationErrors.club_logo_file}
+                    />
+                  </InputGroup>
                   <Form.Control.Feedback type="invalid">
-                    {validationErrors.club_logo_url}
+                    {validationErrors.club_logo_file}
                   </Form.Control.Feedback>
                   <Form.Text className="text-muted">
-                    Optional: URL to a small square logo image
+                    Upload a square JPG or PNG logo (will be resized to 128x128)
                   </Form.Text>
                 </Form.Group>
               </Col>
             </Row>
+            
+            {/* Logo Preview */}
+            {formData.club_logo_preview && (
+              <Row className="mb-3">
+                <Col>
+                  <Form.Label>Logo Preview</Form.Label>
+                  <div className="d-flex align-items-center">
+                    <img 
+                      src={formData.club_logo_preview} 
+                      alt="Club Logo Preview" 
+                      style={{ 
+                        width: '128px', 
+                        height: '128px', 
+                        objectFit: 'contain',
+                        border: '1px solid #dee2e6',
+                        borderRadius: '4px',
+                        padding: '5px'
+                      }} 
+                    />
+                    <Button 
+                      variant="outline-danger"
+                      size="sm"
+                      className="ms-3"
+                      onClick={() => {
+                        handleChange('club_logo_file', null);
+                        handleChange('club_logo_preview', null);
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </Col>
+              </Row>
+            )}
+            
+            {/* Cached Logo Preview */}
+            {!formData.club_logo_preview && formData.club_logo_data && (
+              <Row className="mb-3">
+                <Col>
+                  <Form.Label>Current Logo</Form.Label>
+                  <div className="d-flex align-items-center">
+                    <img 
+                      src={`data:image/jpeg;base64,${formData.club_logo_data}`} 
+                      alt="Club Logo" 
+                      style={{ 
+                        width: '128px', 
+                        height: '128px', 
+                        objectFit: 'contain',
+                        border: '1px solid #dee2e6',
+                        borderRadius: '4px',
+                        padding: '5px'
+                      }} 
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
           </Card.Body>
         </Card>
         
@@ -862,7 +1008,7 @@ Best regards,
                 {validationErrors.email_template_body}
               </Form.Control.Feedback>
               <Form.Text className="text-muted">
-                Available variables: {'{club_name}'}, {'{dance_date}'}, {'{member_name}'}, {'{club_address}'}<br/>
+                Available variables: {'{club_name}'}, {'{dance_date}'}, {'{member_name}'}, {'{club_address}'}, {'{club_logo}'}<br/>
                 Markdown links: [Link text](https://example.com) - Example: [here](https://rockinjokers.com/documents.pdf)
               </Form.Text>
             </Form.Group>

@@ -30,8 +30,12 @@ export const useUpdateSettings = () => {
   const { success, error } = useToast()
   
   return useMutation({
-    mutationFn: apiService.updateSettings,
+    mutationFn: (settingsData) => {
+      console.log('updateSettings mutation called with data keys:', Object.keys(settingsData))
+      return apiService.updateSettings(settingsData)
+    },
     onSuccess: (data) => {
+      console.log('Settings update successful')
       const settings = data.data || data
       updateSettings(settings)
       markClean()
@@ -40,7 +44,18 @@ export const useUpdateSettings = () => {
     },
     onError: (err) => {
       console.error('Failed to update settings:', err)
-      error('Failed to update settings. Please try again.')
+      // Add more detailed error information
+      let errorMsg = 'Failed to update settings. '
+      
+      if (err.response) {
+        errorMsg += `Server responded with status ${err.response.status}: ${err.response.data?.message || err.message}`
+      } else if (err.request) {
+        errorMsg += 'No response received from server. Check your network connection.'
+      } else {
+        errorMsg += err.message || 'Please try again.'
+      }
+      
+      error(errorMsg)
     }
   })
 }
