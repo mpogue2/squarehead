@@ -222,6 +222,9 @@ export const apiService = {
   // Auth endpoints
   sendLoginLink: (email) => api.post('/auth/send-login-link', { email }),
   validateToken: (token) => api.post('/auth/validate-token', { token }),
+  
+  // Email endpoints
+  testEmail: (emailData) => api.post('/email/test-reminder', emailData),
 
   // Schedule endpoints
   getCurrentSchedule: () => api.get('/schedules/current'),

@@ -10,14 +10,22 @@ use PHPMailer\PHPMailer\Exception;
 
 class EmailService
 {
-    private PHPMailer $mailer;
-    private Settings $settingsModel;
+    protected PHPMailer $mailer;
+    protected Settings $settingsModel;
     
     public function __construct()
     {
         $this->settingsModel = new Settings();
         $this->mailer = new PHPMailer(true);
         $this->configureMailer();
+    }
+    
+    /**
+     * Get the mailer instance for external manipulation
+     */
+    public function getMailer(): PHPMailer
+    {
+        return $this->mailer;
     }
     
     /**
@@ -257,7 +265,7 @@ class EmailService
     /**
      * Get reminder email HTML template using dynamic settings with Markdown link support
      */
-    private function getReminderEmailTemplate(string $bodyContent): string
+    protected function getReminderEmailTemplate(string $bodyContent): string
     {
         // Get club settings for email template
         $clubName = $this->settingsModel->get('club_name') ?: 'Square Dance Club';

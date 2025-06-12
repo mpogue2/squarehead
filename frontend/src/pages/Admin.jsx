@@ -9,10 +9,12 @@ import {
   Spinner,
   Badge,
   InputGroup,
-  Modal
+  Modal,
+  OverlayTrigger,
+  Tooltip
 } from 'react-bootstrap'
 import { useQueryClient } from '@tanstack/react-query'
-import { useSettings, useUpdateSettings } from '../hooks/useSettings'
+import { useSettings, useUpdateSettings, useTestEmail } from '../hooks/useSettings'
 import { useToast } from '../components/ToastProvider'
 
 // Import maintenance hooks directly from the file
@@ -42,6 +44,7 @@ const Admin = () => {
   const queryClient = useQueryClient()
   const { data: settings, isLoading, error } = useSettings()
   const updateSettingsMutation = useUpdateSettings()
+  const testEmailMutation = useTestEmail()
   const clearMembersMutation = useClearMembers()
   const clearNextScheduleMutation = useClearNextSchedule()
   const clearCurrentScheduleMutation = useClearCurrentSchedule()
@@ -99,6 +102,10 @@ const Admin = () => {
     backup_enabled: false,
     backup_frequency: 'weekly'
   })
+  
+  // State for test email
+  const [testEmailAddress, setTestEmailAddress] = useState('')
+  const [showTestEmailForm, setShowTestEmailForm] = useState(false)
   
   const [isDirty, setIsDirty] = useState(false)
   const [validationErrors, setValidationErrors] = useState({})
@@ -1012,6 +1019,66 @@ Best regards,
                 Markdown links: [Link text](https://example.com) - Example: [here](https://rockinjokers.com/documents.pdf)
               </Form.Text>
             </Form.Group>
+            
+            {/* Test Email Button */}
+            <Row className="mt-4">
+              <Col>
+                <Button 
+                  variant="outline-primary" 
+                  size="sm"
+                  onClick={() => setShowTestEmailForm(!showTestEmailForm)}
+                >
+                  {showTestEmailForm ? 'Hide Test Email Form' : 'Send Test Email'}
+                </Button>
+              </Col>
+            </Row>
+            
+            {/* Test Email Form */}
+            {showTestEmailForm && (
+              <Row className="mt-3">
+                <Col md={8}>
+                  <InputGroup size="sm">
+                    <Form.Control
+                      type="email"
+                      placeholder="Enter email address for test"
+                      value={testEmailAddress}
+                      onChange={(e) => setTestEmailAddress(e.target.value)}
+                    />
+                    <Button 
+                      variant="primary"
+                      disabled={!testEmailAddress || testEmailMutation.isLoading}
+                      onClick={() => {
+                        const testData = {
+                          email: testEmailAddress,
+                          template: formData.email_template_body,
+                          subject: formData.email_template_subject,
+                          dance_date: new Date().toLocaleDateString(),
+                          member_name: 'Test User',
+                          from_name: formData.email_from_name,
+                          from_email: formData.email_from_address,
+                          club_name: formData.club_name,
+                          club_address: formData.club_address,
+                          club_logo_data: formData.club_logo_data
+                        }
+                        testEmailMutation.mutate(testData)
+                      }}
+                    >
+                      {testEmailMutation.isLoading ? (
+                        <>
+                          <Spinner animation="border" size="sm" className="me-1" />
+                          Sending...
+                        </>
+                      ) : (
+                        'Send'
+                      )}
+                    </Button>
+                  </InputGroup>
+                  <Form.Text className="text-muted">
+                    Sends a test reminder email using the current template settings
+                  </Form.Text>
+                </Col>
+              </Row>
+            )}
           </Card.Body>
         </Card>
         

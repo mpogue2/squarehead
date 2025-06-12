@@ -183,5 +183,6 @@ require_once __DIR__ . '/../src/routes/settings.php';
 require_once __DIR__ . '/../src/routes/schedules.php';
 require_once __DIR__ . '/../src/routes/cron.php';
 require_once __DIR__ . '/../src/routes/maintenance.php';
+require_once __DIR__ . '/../src/routes/email.php';
 
 $app->run();
