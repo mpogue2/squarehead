@@ -28,6 +28,7 @@ const AssignmentEditModal = ({
   
   const [errors, setErrors] = useState({})
   const [conflicts, setConflicts] = useState([])
+  const [warnings, setWarnings] = useState([])
 
   // Initialize form when assignment changes
   useEffect(() => {
@@ -41,6 +42,7 @@ const AssignmentEditModal = ({
       })
       setErrors({})
       setConflicts([])
+      setWarnings([])
     }
   }, [assignment])
 
@@ -62,6 +64,7 @@ const AssignmentEditModal = ({
   // Check for assignment conflicts
   const checkConflicts = (data) => {
     const conflicts = []
+    const warnings = []
     
     // Check if same person assigned to both positions
     if (data.squarehead1_id && data.squarehead2_id && 
@@ -77,19 +80,20 @@ const AssignmentEditModal = ({
       if (member1?.partner_id && member2?.id !== member1.partner_id) {
         const partner = members.find(m => m.id === member1.partner_id)
         if (partner) {
-          conflicts.push(`${member1.first_name} ${member1.last_name} prefers to be paired with their partner ${partner.first_name} ${partner.last_name}`)
+          warnings.push(`${member1.first_name} ${member1.last_name} prefers to be paired with their partner ${partner.first_name} ${partner.last_name}`)
         }
       }
       
       if (member2?.partner_id && member1?.id !== member2.partner_id) {
         const partner = members.find(m => m.id === member2.partner_id)
         if (partner) {
-          conflicts.push(`${member2.first_name} ${member2.last_name} prefers to be paired with their partner ${partner.first_name} ${partner.last_name}`)
+          warnings.push(`${member2.first_name} ${member2.last_name} prefers to be paired with their partner ${partner.first_name} ${partner.last_name}`)
         }
       }
     }
 
     setConflicts(conflicts)
+    setWarnings(warnings)
   }
 
   // Validate form
@@ -279,14 +283,27 @@ const AssignmentEditModal = ({
               </Alert>
             )}
 
-            {/* Conflict Warnings */}
+            {/* Conflict Errors */}
             {conflicts.length > 0 && (
-              <Alert variant="warning" className="mb-3">
+              <Alert variant="danger" className="mb-3">
                 <FaExclamationTriangle className="me-2" />
                 <strong>Assignment Conflicts:</strong>
                 <ul className="mb-0 mt-2">
                   {conflicts.map((conflict, index) => (
                     <li key={index}>{conflict}</li>
+                  ))}
+                </ul>
+              </Alert>
+            )}
+            
+            {/* Partner Preference Warnings */}
+            {warnings.length > 0 && (
+              <Alert variant="warning" className="mb-3">
+                <FaExclamationTriangle className="me-2" />
+                <strong>Partner Preferences:</strong>
+                <ul className="mb-0 mt-2">
+                  {warnings.map((warning, index) => (
+                    <li key={index}>{warning}</li>
                   ))}
                 </ul>
               </Alert>
@@ -338,7 +355,7 @@ const AssignmentEditModal = ({
         <Button 
           variant="primary" 
           onClick={handleSave}
-          disabled={isLoading || conflicts.length > 0}
+          disabled={isLoading}
         >
           {isLoading ? (
             <>
