@@ -38,11 +38,30 @@ abstract class BaseModel
         $placeholders = ':' . implode(', :', array_keys($filtered));
         
         $sql = "INSERT INTO {$this->table} ({$columns}) VALUES ({$placeholders})";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($filtered);
         
-        $id = $this->db->lastInsertId();
-        return $this->find((int)$id);
+        // Debug the SQL and data for troubleshooting
+        if (isset($data['first_name']) && isset($data['last_name'])) {
+            $userIdentifier = "{$data['first_name']} {$data['last_name']}";
+            error_log("BaseModel::create - For {$userIdentifier}, SQL: {$sql}");
+            error_log("BaseModel::create - For {$userIdentifier}, Data: " . json_encode($filtered));
+        }
+        
+        try {
+            $stmt = $this->db->prepare($sql);
+            $result = $stmt->execute($filtered);
+            
+            if (!$result) {
+                $errorInfo = $stmt->errorInfo();
+                error_log("BaseModel::create - SQL Error: " . json_encode($errorInfo));
+                throw new \PDOException("Database error: " . ($errorInfo[2] ?? 'Unknown error'), (int)($errorInfo[1] ?? 0));
+            }
+            
+            $id = $this->db->lastInsertId();
+            return $this->find((int)$id);
+        } catch (\PDOException $e) {
+            error_log("BaseModel::create - Exception: " . $e->getMessage());
+            throw $e;
+        }
     }
     
     public function update(int $id, array $data): ?array
@@ -70,7 +89,20 @@ abstract class BaseModel
     
     protected function filterFillable(array $data): array
     {
-        return array_intersect_key($data, array_flip($this->fillable));
+        $filtered = array_intersect_key($data, array_flip($this->fillable));
+        
+        // Debug log to track filtered data
+        if (isset($data['first_name']) && isset($data['last_name'])) {
+            $userIdentifier = "{$data['first_name']} {$data['last_name']}";
+            error_log("BaseModel::filterFillable - For {$userIdentifier}, filtered data keys: " . implode(', ', array_keys($filtered)));
+            
+            // Check if notes field is being preserved if present
+            if (isset($data['notes']) && !isset($filtered['notes'])) {
+                error_log("WARNING: 'notes' field was in original data but filtered out for {$userIdentifier}");
+            }
+        }
+        
+        return $filtered;
     }
     
     /**

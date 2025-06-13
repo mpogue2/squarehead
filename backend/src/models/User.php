@@ -31,7 +31,8 @@ class User extends BaseModel
         'latitude',
         'longitude',
         'geocoded_at',
-        'birthday'
+        'birthday',
+        'notes' // Will use this to store original_email for duplicates
     ];
     
     /**
