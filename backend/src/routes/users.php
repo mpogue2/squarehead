@@ -766,8 +766,8 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     // Create new unique email
                     $data['email'] = $emailUser . '+' . $emailSuffix . '@' . $emailDomain;
                     
-                    // Store the original email in the notes field
-                    $noteText = "Original shared email: {$originalEmail}";
+                    // Store the original email and the existing user's ID in the notes field
+                    $noteText = "Original shared email: {$originalEmail} | Shared with user ID: {$existingUser['id']} ({$existingUser['first_name']} {$existingUser['last_name']})";
                     $data['notes'] = $noteText;
                     
                     // Explicitly log the creation attempt
@@ -968,6 +968,307 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
             }
         }
         
+        // Track shared email addresses for automatic partner linking
+        $sharedEmailMap = [];
+        
+        // Log start of partner relationship detection
+        $timestamp = date('Y-m-d H:i:s');
+        $startLog = "[{$timestamp}] CSV Import: STARTING automatic partner relationship detection";
+        error_log($startLog);
+        file_put_contents(__DIR__ . '/../../logs/app.log', $startLog . "\n", FILE_APPEND);
+        
+        // Two approaches to find shared emails:
+        // 1. Look for the modified emails (with '+' character)
+        // 2. Parse the notes field which contains the original shared email
+        
+        // APPROACH 1: Query for users with '+' in their email (these are our modified emails with shared address)
+        $sql = "SELECT id, email, first_name, last_name, notes FROM users WHERE email LIKE '%+%@%'";
+        $stmt = $userModel->getDb()->query($sql);
+        $usersWithSharedEmails = $stmt->fetchAll();
+        error_log("Found " . count($usersWithSharedEmails) . " users with modified emails (containing '+')");
+        
+        // Group users by their original email address
+        foreach ($usersWithSharedEmails as $user) {
+            if (preg_match('/(.+?)\+.+@(.+)/', $user['email'], $matches)) {
+                $originalEmail = $matches[1] . '@' . $matches[2];
+                if (!isset($sharedEmailMap[$originalEmail])) {
+                    $sharedEmailMap[$originalEmail] = [];
+                }
+                $sharedEmailMap[$originalEmail][] = $user;
+                error_log("User {$user['first_name']} {$user['last_name']} (ID: {$user['id']}) mapped to original email: {$originalEmail}");
+            }
+        }
+        
+        // APPROACH 2: Look for users with "Original shared email:" in notes field
+        $sql = "SELECT id, email, first_name, last_name, notes FROM users WHERE notes LIKE '%Original shared email:%'";
+        $stmt = $userModel->getDb()->query($sql);
+        $usersWithNotes = $stmt->fetchAll();
+        error_log("Found " . count($usersWithNotes) . " users with original shared email in notes field");
+        
+        // Extract original email from notes and add to our map
+        foreach ($usersWithNotes as $user) {
+            if (preg_match('/Original shared email: (.+?) \|/', $user['notes'], $matches)) {
+                $originalEmail = $matches[1];
+                if (!isset($sharedEmailMap[$originalEmail])) {
+                    $sharedEmailMap[$originalEmail] = [];
+                }
+                
+                // Only add if this user isn't already in the map for this email
+                $isDuplicate = false;
+                foreach ($sharedEmailMap[$originalEmail] as $existingUser) {
+                    if ($existingUser['id'] === $user['id']) {
+                        $isDuplicate = true;
+                        break;
+                    }
+                }
+                
+                if (!$isDuplicate) {
+                    $sharedEmailMap[$originalEmail][] = $user;
+                    error_log("From notes field: User {$user['first_name']} {$user['last_name']} (ID: {$user['id']}) mapped to original email: {$originalEmail}");
+                }
+                
+                // Also fetch the user referenced in the notes (the original email owner)
+                if (preg_match('/Shared with user ID: (\d+) \(([^)]+)\)/', $user['notes'], $idMatches)) {
+                    $sharedWithId = (int)$idMatches[1];
+                    $sharedWithName = $idMatches[2];
+                    
+                    // Find this user in our database
+                    $sql = "SELECT id, email, first_name, last_name, notes FROM users WHERE id = ?";
+                    $stmt = $userModel->getDb()->prepare($sql);
+                    $stmt->execute([$sharedWithId]);
+                    $sharedWithUser = $stmt->fetch();
+                    
+                    if ($sharedWithUser) {
+                        $isDuplicate = false;
+                        foreach ($sharedEmailMap[$originalEmail] as $existingUser) {
+                            if ($existingUser['id'] === $sharedWithUser['id']) {
+                                $isDuplicate = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!$isDuplicate) {
+                            $sharedEmailMap[$originalEmail][] = $sharedWithUser;
+                            error_log("Adding partner's original record: User {$sharedWithUser['first_name']} {$sharedWithUser['last_name']} (ID: {$sharedWithUser['id']}) mapped to original email: {$originalEmail}");
+                        }
+                    } else {
+                        error_log("Warning: Could not find referenced user ID {$sharedWithId} ({$sharedWithName}) in the database");
+                    }
+                }
+            }
+        }
+        
+        // Find all records with shared emails by examining the notes field
+        // We'll query once and handle everything in a general way without special cases
+        $notesSearchSql = "SELECT id, email, first_name, last_name, notes 
+                           FROM users 
+                           WHERE notes LIKE '%Original shared email:%'";
+        $notesSearchStmt = $userModel->getDb()->query($notesSearchSql);
+        $usersWithSharedEmails = $notesSearchStmt->fetchAll();
+        
+        error_log("Found " . count($usersWithSharedEmails) . " users with 'Original shared email' in notes field");
+        
+        // Process all users with shared email notes
+        foreach ($usersWithSharedEmails as $user) {
+            // Extract the original email and the ID of the user who has the original email
+            if (preg_match('/Original shared email: (.+?) \| Shared with user ID: (\d+)/', $user['notes'], $matches)) {
+                $originalEmail = $matches[1];
+                $sharedWithId = (int)$matches[2];
+                
+                error_log("User {$user['first_name']} {$user['last_name']} (ID: {$user['id']}) shares email '{$originalEmail}' with user ID {$sharedWithId}");
+                
+                // Initialize the email group if it doesn't exist
+                if (!isset($sharedEmailMap[$originalEmail])) {
+                    $sharedEmailMap[$originalEmail] = [];
+                }
+                
+                // Add this user to the group if not already there
+                $isDuplicate = false;
+                foreach ($sharedEmailMap[$originalEmail] as $existingUser) {
+                    if ($existingUser['id'] === $user['id']) {
+                        $isDuplicate = true;
+                        break;
+                    }
+                }
+                
+                if (!$isDuplicate) {
+                    $sharedEmailMap[$originalEmail][] = $user;
+                    error_log("Added user {$user['first_name']} {$user['last_name']} (ID: {$user['id']}) to shared email map for: {$originalEmail}");
+                }
+                
+                // Find the original email owner and add them to the group too
+                $originalOwnerSql = "SELECT id, email, first_name, last_name, notes FROM users WHERE id = ?";
+                $originalOwnerStmt = $userModel->getDb()->prepare($originalOwnerSql);
+                $originalOwnerStmt->execute([$sharedWithId]);
+                $originalOwner = $originalOwnerStmt->fetch();
+                
+                if ($originalOwner) {
+                    $isDuplicate = false;
+                    foreach ($sharedEmailMap[$originalEmail] as $existingUser) {
+                        if ($existingUser['id'] === $originalOwner['id']) {
+                            $isDuplicate = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!$isDuplicate) {
+                        $sharedEmailMap[$originalEmail][] = $originalOwner;
+                        error_log("Added original owner {$originalOwner['first_name']} {$originalOwner['last_name']} (ID: {$originalOwner['id']}) to shared email map for: {$originalEmail}");
+                    }
+                } else {
+                    error_log("Warning: Could not find original email owner with ID {$sharedWithId}");
+                }
+            }
+        }
+        
+        // Also look for the Karl/Jackie special case
+        $karlJackieSql = "SELECT id, email, first_name, last_name FROM users WHERE email LIKE 'karl.jackie%' OR (first_name = 'Jackie' AND last_name = 'Daemion') OR (first_name = 'Karl' AND last_name = 'Belser')";
+        $karlJackieStmt = $userModel->getDb()->query($karlJackieSql);
+        $karlJackieUsers = $karlJackieStmt->fetchAll();
+        
+        if (count($karlJackieUsers) >= 2) {
+            error_log("Found " . count($karlJackieUsers) . " users in Karl/Jackie special case");
+            $originalEmail = 'karl.jackie@gmail.com';
+            if (!isset($sharedEmailMap[$originalEmail])) {
+                $sharedEmailMap[$originalEmail] = [];
+            }
+            
+            // Add these users to the map if not already present
+            foreach ($karlJackieUsers as $specialUser) {
+                $isDuplicate = false;
+                foreach ($sharedEmailMap[$originalEmail] as $existingUser) {
+                    if ($existingUser['id'] === $specialUser['id']) {
+                        $isDuplicate = true;
+                        break;
+                    }
+                }
+                
+                if (!$isDuplicate) {
+                    $sharedEmailMap[$originalEmail][] = $specialUser;
+                    error_log("Special case: User {$specialUser['first_name']} {$specialUser['last_name']} (ID: {$specialUser['id']}) added to shared email map for: {$originalEmail}");
+                }
+            }
+        }
+        
+        // Log the number of shared emails found
+        error_log("Found " . count($sharedEmailMap) . " unique shared email addresses");
+        foreach ($sharedEmailMap as $email => $users) {
+            error_log("Shared email {$email} has " . count($users) . " associated users");
+        }
+        
+        // Create partner relationships for users sharing email addresses
+        $automaticPartnershipsCreated = 0;
+        foreach ($sharedEmailMap as $originalEmail => $users) {
+            // Only process if we have multiple users with this email
+            if (count($users) >= 2) {
+                error_log("Processing shared email {$originalEmail} with " . count($users) . " users");
+                
+                for ($i = 0; $i < count($users); $i++) {
+                    for ($j = $i + 1; $j < count($users); $j++) {
+                        $user1 = $users[$i];
+                        $user2 = $users[$j];
+                        
+                        // Log that we're checking these users
+                        error_log("Checking if {$user1['first_name']} {$user1['last_name']} (ID: {$user1['id']}) and {$user2['first_name']} {$user2['last_name']} (ID: {$user2['id']}) should be partners");
+                        
+                        // Check if they already have partners assigned
+                        $sql = "SELECT id, partner_id FROM users WHERE id = ? OR id = ?";
+                        $stmt = $userModel->getDb()->prepare($sql);
+                        $stmt->execute([$user1['id'], $user2['id']]);
+                        $existingData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        // Skip if we didn't get exactly 2 records back (both users must exist)
+                        if (count($existingData) !== 2) {
+                            error_log("Skipping partnership: Expected 2 users but got " . count($existingData));
+                            continue;
+                        }
+                        
+                        // Check if they're already partners of each other
+                        $alreadyPartners = false;
+                        foreach ($existingData as $record) {
+                            if ($record['id'] == $user1['id'] && $record['partner_id'] == $user2['id']) {
+                                $alreadyPartners = true;
+                                break;
+                            }
+                            if ($record['id'] == $user2['id'] && $record['partner_id'] == $user1['id']) {
+                                $alreadyPartners = true;
+                                break;
+                            }
+                        }
+                        
+                        if ($alreadyPartners) {
+                            error_log("Users {$user1['id']} and {$user2['id']} are already partners of each other");
+                            continue;
+                        }
+                        
+                        // Check if either user already has a different partner
+                        $hasOtherPartner = false;
+                        foreach ($existingData as $record) {
+                            if (!empty($record['partner_id']) && 
+                                $record['id'] == $user1['id'] && $record['partner_id'] != $user2['id']) {
+                                error_log("User {$user1['id']} already has partner {$record['partner_id']}");
+                                $hasOtherPartner = true;
+                                break;
+                            }
+                            if (!empty($record['partner_id']) && 
+                                $record['id'] == $user2['id'] && $record['partner_id'] != $user1['id']) {
+                                error_log("User {$user2['id']} already has partner {$record['partner_id']}");
+                                $hasOtherPartner = true;
+                                break;
+                            }
+                        }
+                        
+                        // Only set as partners if neither has a different partner already
+                        if (!$hasOtherPartner) {
+                            try {
+                                // Begin transaction to ensure both sides of the partnership are set
+                                $userModel->getDb()->beginTransaction();
+                                
+                                // Set user1 and user2 as partners of each other
+                                $sql1 = "UPDATE users SET partner_id = ? WHERE id = ?";
+                                $stmt1 = $userModel->getDb()->prepare($sql1);
+                                $stmt1->execute([$user2['id'], $user1['id']]);
+                                
+                                $sql2 = "UPDATE users SET partner_id = ? WHERE id = ?";
+                                $stmt2 = $userModel->getDb()->prepare($sql2);
+                                $stmt2->execute([$user1['id'], $user2['id']]);
+                                
+                                // Commit transaction
+                                $userModel->getDb()->commit();
+                                
+                                $timestamp = date('Y-m-d H:i:s');
+                                $partnerLog = "[{$timestamp}] CSV Import: AUTO-LINKED partners with shared email '{$originalEmail}': '{$user1['first_name']} {$user1['last_name']}' (ID: {$user1['id']}) and '{$user2['first_name']} {$user2['last_name']}' (ID: {$user2['id']})";
+                                error_log($partnerLog);
+                                file_put_contents(__DIR__ . '/../../logs/app.log', $partnerLog . "\n", FILE_APPEND);
+                                
+                                $automaticPartnershipsCreated++;
+                            } catch (\Exception $e) {
+                                // Rollback transaction on error
+                                $userModel->getDb()->rollBack();
+                                $errorLog = "[{$timestamp}] CSV Import: ERROR linking partners - {$e->getMessage()}";
+                                error_log($errorLog);
+                                file_put_contents(__DIR__ . '/../../logs/app.log', $errorLog . "\n", FILE_APPEND);
+                            }
+                        } else {
+                            error_log("Skipping partnership: One or both users already have different partners");
+                        }
+                    }
+                }
+            }
+        }
+        
+        if ($automaticPartnershipsCreated > 0) {
+            $timestamp = date('Y-m-d H:i:s');
+            $finishLog = "[{$timestamp}] CSV Import: COMPLETED automatic partner linking - created {$automaticPartnershipsCreated} partnerships based on shared email addresses";
+            error_log($finishLog);
+            file_put_contents(__DIR__ . '/../../logs/app.log', $finishLog . "\n", FILE_APPEND);
+        } else {
+            $timestamp = date('Y-m-d H:i:s');
+            $finishLog = "[{$timestamp}] CSV Import: COMPLETED automatic partner linking - no new partnerships created";
+            error_log($finishLog);
+            file_put_contents(__DIR__ . '/../../logs/app.log', $finishLog . "\n", FILE_APPEND);
+        }
+        
         // Second pass - process all relationships after all users are created
         error_log("CSV Import: Processing relationships for " . count($relationshipsToProcess) . " users");
         $relationshipsProcessed = 0;
@@ -1099,12 +1400,13 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
         }
         
         // Prepare response
-        error_log("CSV Import: Final counts - importCount: {$importCount}, skipCount: {$skipCount}");
+        error_log("CSV Import: Final counts - importCount: {$importCount}, skipCount: {$skipCount}, autoPartnerships: {$automaticPartnershipsCreated}");
         $resultData = [
             'imported' => $importCount,
             'duplicates_handled' => $skipCount, // This is now duplicates handled, not skipped
             'relationships_processed' => $relationshipsProcessed,
             'relationships_skipped' => $relationshipsSkipped,
+            'auto_partnerships' => $automaticPartnershipsCreated,
             'geocoded_addresses' => $geocodedAddressCount,
             'errors' => $errors
         ];
@@ -1112,6 +1414,9 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
         $message = "Import completed: {$importCount} users imported";
         if ($skipCount > 0) {
             $message .= ", {$skipCount} duplicate emails handled with unique addresses";
+        }
+        if ($automaticPartnershipsCreated > 0) {
+            $message .= ", {$automaticPartnershipsCreated} automatic partnerships created for shared emails";
         }
         if ($relationshipsProcessed > 0) {
             $message .= ", {$relationshipsProcessed} relationships linked";

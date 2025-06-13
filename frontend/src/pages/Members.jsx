@@ -37,6 +37,7 @@ import {
 } from '../hooks/useMembers'
 import { useAuth } from '../hooks/useAuth'
 import { useUI } from '../hooks/useUI'
+import { useToast } from '../components/ToastProvider'
 import ImportResultsModal from '../components/members/ImportResultsModal'
 
 // Memoized table row component to prevent unnecessary re-renders
@@ -115,7 +116,7 @@ const MemberRow = React.memo(({ member, canEdit, canDelete, onEdit, onDelete }) 
       <td>{getStatusBadge(member)}</td>
       <td>{getRoleBadge(member)}</td>
       <td>
-        {member.birthday ? member.birthday : <span className="text-muted">-</span>}
+        {member.birthday ? member.birthday.replace(/-/g, '/') : <span className="text-muted">-</span>}
       </td>
       <td>
         <div className="d-flex gap-1">
@@ -159,6 +160,7 @@ MemberRow.displayName = 'MemberRow'
 const Members = () => {
   const { user } = useAuth()
   const { data: members = [], isLoading, error } = useMembers()
+  const { success, error: showError } = useToast()
   
   // Add refs to track export state and prevent multiple calls
   const exportingRef = useRef(false)
@@ -328,8 +330,7 @@ const Members = () => {
       // Validate file is a CSV
       if (!file.name.toLowerCase().endsWith('.csv')) {
         console.error('Invalid file type. Only CSV files are allowed.')
-        // Use an alert since we're in a callback and may not have the toast function
-        alert('Invalid file type. Only CSV files are allowed.')
+        showError('Invalid file type. Only CSV files are allowed.')
         event.target.value = '' // Reset input
         return
       }
@@ -337,7 +338,7 @@ const Members = () => {
       // More extensive file validation
       if (file.size === 0) {
         console.error('Empty file detected')
-        alert('The selected file is empty. Please select a valid CSV file.')
+        showError('The selected file is empty. Please select a valid CSV file.')
         event.target.value = '' // Reset input
         return
       }
@@ -353,15 +354,84 @@ const Members = () => {
       // Read the first few bytes to verify it's a valid file
       const reader = new FileReader()
       reader.onload = function(e) {
-        const sample = e.target.result.substr(0, 200) // Get first 200 chars
+        const sample = e.target.result.substr(0, 500) // Get first 500 chars
         console.log('File content sample:', sample)
+        
+        // Extra validation - check if the file has header row
+        if (!sample.includes('Phone') && !sample.includes('Name') && !sample.includes('E-mail')) {
+          console.error('CSV file appears to be missing required headers')
+          showError('CSV file appears to be missing required headers. Please check your file format.')
+          return
+        }
+        
+        // Show loading message
+        success('Starting CSV import. This may take a moment...')
         
         // Proceed with import
         importCSV.mutate(file, {
           onSuccess: (data) => {
-            console.log('✅ Import completed successfully:', data)
+            console.log('✅ Import completed successfully:', data);
+            console.log('✅ Import data structure:', JSON.stringify(data, null, 2));
+            
+            // Deep log the structure to see exactly what we're getting
+            if (data.data) {
+              console.log('data.data:', JSON.stringify(data.data, null, 2));
+              if (data.data.data) {
+                console.log('data.data.data:', JSON.stringify(data.data.data, null, 2));
+              }
+            }
+            
+            // Extract statistics for toast message and later use
+            // This handles multiple possible nesting patterns
+            let importStats = {};
+            
+            if (data.data && data.data.data) {
+              // API response pattern: response.data.data contains our stats
+              importStats = data.data.data;
+            } else if (data.data) {
+              // Simpler nesting: response.data contains our stats
+              importStats = data.data;
+            } else {
+              // Direct: response contains our stats
+              importStats = data;
+            }
+            
+            console.log('✅ Extracted import statistics:', importStats);
+            
+            // Create a clean copy of the import results with just the stats we need
+            // This prevents issues with nested references and ensures backward compatibility
+            const cleanImportResults = {
+              imported: importStats.imported || 0,
+              skipped: importStats.skipped || 0,
+              duplicates_handled: importStats.duplicates_handled || importStats.skipped || 0,
+              auto_partnerships: importStats.auto_partnerships || 0,
+              errors: importStats.errors || []
+            };
+            
+            console.log('✅ Clean import results for modal:', cleanImportResults);
+            
+            // Set the import results state to our clean, simplified object
+            setImportResults(cleanImportResults);
             setShowImportResults(true);
-            setImportResults(data.data);
+            
+            // Construct a success message based on the results
+            let successMsg = `Import completed with ${cleanImportResults.imported} members imported`;
+            
+            // Add duplicates handled info if any
+            // Prefer duplicates_handled field but fall back to skipped for backward compatibility
+            const duplicatesHandled = cleanImportResults.duplicates_handled || cleanImportResults.skipped || 0;
+            if (duplicatesHandled > 0) {
+              successMsg += `, ${duplicatesHandled} duplicate email${duplicatesHandled > 1 ? 's' : ''} handled`;
+            }
+            
+            // Add partnerships info if any
+            const autoPartnerships = cleanImportResults.auto_partnerships || 0;
+            if (autoPartnerships > 0) {
+              successMsg += `, ${autoPartnerships} automatic partner relationship${autoPartnerships !== 1 ? 's' : ''} created`;
+            }
+            
+            // Show success message
+            success(successMsg);
           },
           onError: (err) => {
             console.error('❌ Import failed:', err)
@@ -371,30 +441,38 @@ const Members = () => {
             console.error('Error properties:', Object.keys(err))
             console.error('Error name:', err.name)
             console.error('Error message:', err.message)
-            console.error('Error stack:', err.stack)
             
-            if (err.response) {
-              console.error('Error response:', {
-                status: err.response.status,
-                statusText: err.response.statusText,
-                data: err.response.data
-              })
+            // Try to extract a meaningful error message
+            let errorMessage = 'CSV import failed. ';
+            
+            if (err.message) {
+              // Check for network errors
+              if (err.isNetworkError || err.message.includes('Network error') || err.message.includes('Failed to fetch')) {
+                errorMessage = 'Network error: Cannot connect to the server. Please ensure the backend server is running and refresh the page before trying again.';
+              } else if (err.message.includes('Missing required columns')) {
+                errorMessage += 'Your CSV file is missing required columns. The file must have either a "Name" column (Last, First format) or separate "First Name" and "Last Name" columns, plus an "Email" column.';
+              } else if (err.message.includes('HTML')) {
+                errorMessage += 'Server returned an HTML error. Please check the server logs.';
+              } else {
+                errorMessage += err.message;
+              }
+            } else {
+              errorMessage += 'Please check the file format and try again.';
             }
             
-            // Show error notification
-            showError('CSV import failed. Please check the file format and try again.');
+            showError(errorMessage);
           }
         })
       }
       reader.onerror = function(e) {
         console.error('Error reading file:', e)
-        alert('Error reading the file. Please try again.')
+        showError('Error reading the file. Please try again.')
       }
-      reader.readAsText(file.slice(0, 1000)) // Read just the beginning of the file
+      reader.readAsText(file.slice(0, 5000)) // Read more of the file for better validation
       
       event.target.value = '' // Reset input
     }
-  }, [importCSV, showError])
+  }, [importCSV, showError, success])
   
   // Memoized utility functions
   // This key will force the icon to re-render when sortBy changes
