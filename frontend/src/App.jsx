@@ -15,6 +15,7 @@ import Map from './pages/Map'
 import CurrentSchedule from './pages/CurrentSchedule'
 import NextSchedule from './pages/NextSchedule'
 import Admin from './pages/Admin'
+import ImportLogs from './pages/ImportLogs'
 import Login from './pages/Login'
 import AuthTest from './pages/AuthTest'
 import DevLogin from './pages/DevLogin'
@@ -98,10 +99,15 @@ function App() {
                 <Route path="current-schedule" element={<CurrentSchedule />} />
                 <Route path="next-schedule" element={<NextSchedule />} />
                 
-                {/* Admin-only route */}
+                {/* Admin-only routes */}
                 <Route path="admin" element={
                   <ProtectedRoute adminOnly>
                     <Admin />
+                  </ProtectedRoute>
+                } />
+                <Route path="import-logs" element={
+                  <ProtectedRoute adminOnly>
+                    <ImportLogs />
                   </ProtectedRoute>
                 } />
               </Route>

@@ -90,7 +90,13 @@ export const apiService = {
       console.log('📤 Starting CSV import using fetch API')
       console.log('🔑 Authorization header:', `Bearer ${JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token || 'dev-token-valid'}`.substring(0, 20) + '...')
       
-      fetch('http://localhost:8000/api/users/import', {
+      // Get base URL from api instance's baseURL to ensure consistency
+      const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
+      const importURL = baseURL.replace(/\/api$/, '') + '/api/users/import';
+      
+      console.log('🌐 Using import URL:', importURL);
+      
+      fetch(importURL, {
         method: 'POST',
         body: formData,
         headers: {
@@ -98,7 +104,9 @@ export const apiService = {
           'Authorization': `Bearer ${JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token || 'dev-token-valid'}`
         },
         mode: 'cors',
-        credentials: 'same-origin'
+        credentials: 'same-origin',
+        // Set longer timeout for large CSV files
+        timeout: 60000
       })
       .then(response => {
         console.log('Fetch response status:', response.status)
@@ -122,11 +130,25 @@ export const apiService = {
         }
         
         return response.text().then(text => {
-          console.log('Response text (first 200 chars):', text.substring(0, 200))
+          console.log('Response text (first 500 chars):', text.substring(0, 500))
           try {
+            // Try to parse as JSON
             return JSON.parse(text)
           } catch (e) {
             console.error('Failed to parse response as JSON:', e)
+            console.error('Raw response:', text)
+            
+            // Try to determine if the response might be HTML error page
+            if (text.includes('<!DOCTYPE html>') || text.includes('<html>')) {
+              throw new Error('Server returned HTML instead of JSON. Server might be in error state.')
+            }
+            
+            // Try to extract error message if present
+            const errorMatch = text.match(/error[^:]*:(.*?)(?:\n|$)/i);
+            if (errorMatch && errorMatch[1]) {
+              throw new Error('Server error: ' + errorMatch[1].trim())
+            }
+            
             throw new Error('Invalid JSON response from server')
           }
         })
@@ -140,6 +162,16 @@ export const apiService = {
         console.error('Error name:', error.name)
         console.error('Error message:', error.message)
         console.error('Error stack:', error.stack)
+        
+        // Handle network errors specifically
+        if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+          console.error('Network error detected - server connection issue');
+          const networkError = new Error('CSV import failed: Network error - cannot connect to server. Please ensure the backend server is running and try again.');
+          networkError.originalError = error;
+          networkError.isNetworkError = true;
+          reject(networkError);
+          return;
+        }
         
         // Try to extract and log more details from the error
         if (error.message && error.message.includes('{')) {
@@ -222,6 +254,9 @@ export const apiService = {
     throw new Error('PDF export is handled on the client-side')
   },
 
+  // Maintenance endpoints
+  getMaintenanceImportLogs: () => api.get('/maintenance/import-logs'),
+  
   // Settings endpoints
   getSettings: () => api.get('/settings'),
   getSetting: (key) => api.get(`/settings/${key}`),

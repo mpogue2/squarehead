@@ -51,7 +51,7 @@ REMAINING PHASES:
 =====================
 10. INFRASTRUCTURE:
 
-10.1) Cron Job Endpoint
+DONE 10.1) Cron Job Endpoint
 - Create /api/cron/reminders endpoint
 - Logic to check reminder days and send emails
 - Logging and error handling for email delivery
@@ -59,7 +59,7 @@ REMAINING PHASES:
 =====================
 11. MAP PAGE 
 
-11.1) MAP page: Duplicated addresses must jitter the star locations, so that all stars will be at least partially visible.
+DONE 11.1) MAP page: Duplicated addresses must jitter the star locations, so that all stars will be at least partially visible.
 
 DONE 11.2) MAP page: Cache the latLong's for each of the member's addresses on the Member's page (so they don't have to be looked up each time).  The cache must be updated whenever any member's address changes.  The latLongs do not need to be displayed anywhere.
 
@@ -83,10 +83,11 @@ DONE 12.5) Admin page: Allow Markdown-style links in the email template.
 
   "Duty square instructions are online [here](https://rockinjokers.com/Documents/202503%20Rockin%20Jokers%20Duty%20Square%20Instructions.pdf)"
 
-12.6) Admin page: Instead of a LINK to the logo, the logo should be uploadable (square aspect ration, JPG or PNG), 
-  and then cached as a Setting.
+12.6) Admin page: Instead of a LINK to the logo, the logo should be uploadable (square aspect ratio, JPG or PNG), resized to 128x128, and then cached as a Setting.  After upload, the admin page should show the resized logo somewhere, so that we know it's set properly.
 
-12.7) Admin page: Add "Alternate Location 1" and "Alternate Location 2" locations, 
+12.7) Admin page: In the "Email Body Template", allow "{club_logo}" as a variable to indicate where the resized logo should be placed in the email.
+
+NOT PLANNED 12.8) Admin page: Add "Alternate Location 1" and "Alternate Location 2" locations, 
     e.g. Santa Theresa Branch Library (plot as small red square), Communication Park Branch Library (plot as small red triangle).  
 
 
@@ -114,7 +115,7 @@ DONE 14.4) Members page: make the PDF export button work.  Output should be a pr
 
 15.0) Next/Current Schedule pages: Assigning a second squarehead who is not a partner generates a warning, and is not an error
 
-15.1) Current Schedule page: make an Export to Clipboard button or clickable link: put this in the following format (suitable for pasting into the MS Word schedule).  Note the Fifth Wednesdays should automatically use the string "The RJ Board for 5TH Wednesday!".
+DONE 15.1) Current Schedule page: make a "Copy to Clipboard" button or clickable link: put this in the following format:  "MMM DD: Squarehead 1, Squarehead 2", where MMM = first three letters of the month with first letter capitalized. Note the Fifth Wednesdays should automatically use just the string "The RJ Board for 5TH Wednesday!" in place of any names.  Also, if two people are assigned to a single dance, and they have the same Last Name, for example "Alice Brown" and "Michael Brown", then convert this string from "Alice Brown, Michael Brown" to "Alice & Michael Brown".
 
   Jun 4: Doug Caulfield, Bev Kuhar, Art & Sandy Bruns
   Jun 11: Jasmine & Ken Bucan, Mike Berry, Vic Oros
@@ -131,4 +132,9 @@ DONE 14.4) Members page: make the PDF export button work.  Output should be a pr
 
 15.3) Current/Next Schedule pages: The date columns should be mm/dd/yy, rather than "Jun 3, 2025", to save space.
 
-15.4) Next Schedule Page: When creating a row for a dance, dates that are the 5th Wednesdays of a month should automatically set the Club Night field to: "Fifth Wednesday".  A simple way of determining this is if the day part of the date is 29 or greater.
+DONE 15.4) Next Schedule Page: When creating a row for a dance, dates that are the 5th Wednesdays of a month should automatically set the Club Night field to: "Fifth Wednesday".  A simple way of determining this is if the day part of the date is 29 or greater.
+
+15.5) Automatic logout is in place right now (1 hour).  Change this? Make it a 
+  Setting?
+
+  
