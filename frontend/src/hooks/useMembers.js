@@ -441,12 +441,12 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
         const clubName = useSettingsStore.getState().getClubName()
         console.log(`🏢 Using club name: ${clubName}`)
         
-        // Create a new PDF document
+        // Create a new PDF document - LANDSCAPE orientation
         const { jsPDF } = await import('jspdf')
         const doc = new jsPDF({
-          orientation: 'portrait',
+          orientation: 'landscape',
           unit: 'in',
-          format: 'letter' // 8.5 x 11 inches
+          format: 'letter' // 11 x 8.5 inches in landscape mode
         })
         
         // Set up document metadata
@@ -457,39 +457,54 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
           keywords: 'members, directory, export'
         })
         
-        // Page dimensions
-        const pageWidth = 8.5
-        const pageHeight = 11
+        // Page dimensions (landscape format)
+        const pageWidth = 11
+        const pageHeight = 8.5
         const margin = 0.5
         const usableWidth = pageWidth - (margin * 2)
         
-        // Add title
-        doc.setFontSize(18)
-        doc.text(`${clubName} Members Directory`, pageWidth / 2, margin, { align: 'center' })
+        // Add club logo if available
+        let logoData = useSettingsStore.getState().getSetting('club_logo_data', null);
+        const logoSize = 0.8; // Logo size in inches
         
-        // Add current date
-        const today = new Date().toLocaleDateString()
+        // Add title at the left
+        doc.setFontSize(18)
+        doc.setFont(undefined, 'bold')
+        doc.text(`${clubName} Membership Roster`, margin, margin + 0.25)
+        doc.setFont(undefined, 'normal')
+        
+        // Add current date in MM/DD/YYYY format just below the title
+        const today = new Date();
+        const formattedDate = `${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}/${today.getFullYear()}`;
         doc.setFontSize(10)
-        doc.text(`Generated: ${today}`, pageWidth / 2, margin + 0.3, { align: 'center' })
+        doc.text(`${formattedDate}`, margin, margin + 0.5)
+        
+        // Add logo to the upper right corner if available
+        if (logoData) {
+          try {
+            // Create image from base64 data
+            const imgData = `data:image/jpeg;base64,${logoData}`;
+            doc.addImage(imgData, 'JPEG', pageWidth - margin - logoSize, margin, logoSize, logoSize);
+          } catch (e) {
+            console.error('Failed to add logo to PDF:', e);
+          }
+        }
         
         // Set up table
         doc.setFontSize(9)
         doc.setLineWidth(0.01)
         
-        // Define columns with widths that fill the page
+        // Define columns with widths that fill the page - new column order
         const columns = [
-          { header: 'First Name', width: usableWidth * 0.15 },
-          { header: 'Last Name', width: usableWidth * 0.15 },
-          { header: 'Email', width: usableWidth * 0.25 },
           { header: 'Phone', width: usableWidth * 0.15 },
-          { header: 'Status', width: usableWidth * 0.1 },
-          { header: 'Role', width: usableWidth * 0.1 },
-          { header: 'Birthday', width: usableWidth * 0.1 }
+          { header: 'Name (last, first)', width: usableWidth * 0.22 },
+          { header: 'Address', width: usableWidth * 0.33 },
+          { header: 'E-mail', width: usableWidth * 0.3 }
         ]
         
-        // Starting position
-        let y = margin + 0.7
-        const rowHeight = 0.25
+        // Starting position - lower to accommodate the header with logo
+        let y = margin + 1.2
+        const rowHeight = 0.30
         
         // Draw header row
         let x = margin
@@ -497,8 +512,22 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
         doc.setFillColor(240, 240, 240)
         doc.rect(margin, y, usableWidth, rowHeight, 'F')
         
+        // Draw header borders
+        doc.setDrawColor(0, 0, 0) // Black color for borders
+        doc.rect(margin, y, usableWidth, rowHeight, 'S') // Outer border
+        
+        // Draw vertical borders between columns
+        let columnX = margin
+        columns.forEach(column => {
+          columnX += column.width
+          if (columnX < margin + usableWidth) { // Don't draw after last column
+            doc.line(columnX, y, columnX, y + rowHeight)
+          }
+        })
+        
         // Header text
         doc.setFont(undefined, 'bold')
+        x = margin
         columns.forEach(column => {
           doc.text(column.header, x + 0.1, y + (rowHeight / 2) + 0.03)
           x += column.width
@@ -514,10 +543,11 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
           const member = members[i]
           
           // Check if we need a new page
-          if (y > pageHeight - margin) {
-            // Add page number
+          if (y > pageHeight - margin - 0.5) { // Save space for footer
+            // Add page footer with page count and privacy message
             doc.setFontSize(8)
-            doc.text(`Page ${pageCount}`, pageWidth / 2, pageHeight - 0.3, { align: 'center' })
+            doc.text(`Page ${pageCount} of ${Math.ceil(members.length / Math.floor((pageHeight - margin * 2 - 1.2) / rowHeight))}`, margin, pageHeight - 0.3)
+            doc.text("Please shred when disposing this roster. If you have corrections please contact the Roster Manager or the President.", pageWidth / 2, pageHeight - 0.3, { align: 'center' })
             
             // Add new page
             doc.addPage()
@@ -529,8 +559,23 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
             doc.setFillColor(240, 240, 240)
             doc.rect(margin, y, usableWidth, rowHeight, 'F')
             
+            // Draw header borders
+            doc.setDrawColor(0, 0, 0) // Black color for borders
+            doc.rect(margin, y, usableWidth, rowHeight, 'S') // Outer border
+            
+            // Draw vertical borders between columns
+            let columnX = margin
+            columns.forEach(column => {
+              columnX += column.width
+              if (columnX < margin + usableWidth) { // Don't draw after last column
+                doc.line(columnX, y, columnX, y + rowHeight)
+              }
+            })
+            
+            // Header text
             doc.setFontSize(9)
             doc.setFont(undefined, 'bold')
+            x = margin
             columns.forEach(column => {
               doc.text(column.header, x + 0.1, y + (rowHeight / 2) + 0.03)
               x += column.width
@@ -543,51 +588,56 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
           // Draw row
           x = margin
           
-          // Alternate row background for readability
-          if (i % 2 === 0) {
+          // Set row background color
+          // Light yellow for second row and every third row after that
+          if (i === 1 || (i > 1 && (i - 1) % 3 === 0)) {
+            doc.setFillColor(255, 252, 220) // Light yellow
+            doc.rect(margin, y, usableWidth, rowHeight, 'F')
+          } else if (i % 2 === 0) {
+            // Alternate white/very light grey for other rows
             doc.setFillColor(252, 252, 252)
             doc.rect(margin, y, usableWidth, rowHeight, 'F')
           }
           
-          // Add member data
-          // For 'loa' status, use all uppercase "LOA", otherwise capitalize first letter
-          const statusText = member.status === 'loa' ? 'LOA' : 
-                             member.status.charAt(0).toUpperCase() + member.status.slice(1)
-          const roleText = member.is_admin ? 'Admin' : 'Member'
+          // Draw cell borders
+          doc.setDrawColor(0, 0, 0) // Black color for borders
+          doc.rect(margin, y, usableWidth, rowHeight, 'S') // Outer border
           
-          // First Name
-          doc.text(member.first_name || '', x + 0.1, y + (rowHeight / 2) + 0.03)
-          x += columns[0].width
+          // Draw vertical borders between columns
+          let columnX = margin
+          columns.forEach(column => {
+            columnX += column.width
+            if (columnX < margin + usableWidth) { // Don't draw after last column
+              doc.line(columnX, y, columnX, y + rowHeight)
+            }
+          })
           
-          // Last Name
-          doc.text(member.last_name || '', x + 0.1, y + (rowHeight / 2) + 0.03)
-          x += columns[1].width
-          
-          // Email
-          doc.text(member.email || '', x + 0.1, y + (rowHeight / 2) + 0.03)
-          x += columns[2].width
+          // Add member data in the new column order
           
           // Phone
           doc.text(member.phone || '', x + 0.1, y + (rowHeight / 2) + 0.03)
-          x += columns[3].width
+          x += columns[0].width
           
-          // Status
-          doc.text(statusText, x + 0.1, y + (rowHeight / 2) + 0.03)
-          x += columns[4].width
+          // Name (last, first)
+          const fullName = `${member.last_name || ''}, ${member.first_name || ''}`
+          doc.text(fullName, x + 0.1, y + (rowHeight / 2) + 0.03)
+          x += columns[1].width
           
-          // Role
-          doc.text(roleText, x + 0.1, y + (rowHeight / 2) + 0.03)
-          x += columns[5].width
+          // Address
+          doc.text(member.address || '', x + 0.1, y + (rowHeight / 2) + 0.03)
+          x += columns[2].width
           
-          // Birthday
-          doc.text(member.birthday || '', x + 0.1, y + (rowHeight / 2) + 0.03)
+          // Email
+          doc.text(member.email || '', x + 0.1, y + (rowHeight / 2) + 0.03)
           
           y += rowHeight
         }
         
-        // Add page number to the last page
+        // Add footer to the last page with page count and privacy message
         doc.setFontSize(8)
-        doc.text(`Page ${pageCount}`, pageWidth / 2, pageHeight - 0.3, { align: 'center' })
+        const totalPages = Math.ceil(members.length / Math.floor((pageHeight - margin * 2 - 1.2) / rowHeight));
+        doc.text(`Page ${pageCount} of ${totalPages}`, margin, pageHeight - 0.3)
+        doc.text("Please shred when disposing this roster. If you have corrections please contact the Roster Manager or the President.", pageWidth / 2, pageHeight - 0.3, { align: 'center' })
         
         // Generate the PDF
         const pdfBlob = doc.output('blob')
