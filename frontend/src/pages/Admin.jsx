@@ -1389,24 +1389,6 @@ Best regards,
                 </Card>
               </Col>
               
-              <Col md={3} className="mb-3">
-                <Card className="h-100 border-info">
-                  <Card.Body className="text-center">
-                    <h6 className="text-info">CSV Import Logs</h6>
-                    <p className="small text-muted mb-3">
-                      View details about skipped users during CSV imports
-                    </p>
-                    <Button 
-                      variant="outline-info" 
-                      size="sm"
-                      as="a"
-                      href="/import-logs"
-                    >
-                      View Import Logs
-                    </Button>
-                  </Card.Body>
-                </Card>
-              </Col>
             </Row>
           </Card.Body>
         </Card>
