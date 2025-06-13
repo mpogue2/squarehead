@@ -333,6 +333,7 @@ Best regards,
         smtp_password: settingsData.smtp_password || '',
         system_timezone: settingsData.system_timezone || 'America/Los_Angeles',
         max_upload_size: settingsData.max_upload_size || '10',
+        geocoding_batch_size: settingsData.geocoding_batch_size || '5',
         backup_enabled: settingsData.backup_enabled || false,
         backup_frequency: settingsData.backup_frequency || 'weekly'
       })
@@ -419,6 +420,11 @@ Best regards,
     // Max upload size validation
     if (formData.max_upload_size && (isNaN(formData.max_upload_size) || formData.max_upload_size < 1 || formData.max_upload_size > 100)) {
       errors.max_upload_size = 'Upload size must be a number between 1 and 100 MB'
+    }
+    
+    // Geocoding batch size validation
+    if (formData.geocoding_batch_size && (isNaN(formData.geocoding_batch_size) || formData.geocoding_batch_size < 1 || formData.geocoding_batch_size > 100)) {
+      errors.geocoding_batch_size = 'Batch size must be a number between 1 and 100'
     }
     
     // SMTP configuration validation
@@ -570,6 +576,7 @@ Best regards,
         smtp_password: settingsData.smtp_password || '',
         system_timezone: settingsData.system_timezone || 'America/Los_Angeles',
         max_upload_size: settingsData.max_upload_size || '10',
+        geocoding_batch_size: settingsData.geocoding_batch_size || '5',
         backup_enabled: settingsData.backup_enabled || false,
         backup_frequency: settingsData.backup_frequency || 'weekly'
       })
@@ -1224,6 +1231,32 @@ Best regards,
                     Maximum file size for CSV uploads and logo images
                   </Form.Text>
                 </Form.Group>
+              </Col>
+            </Row>
+            
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Geocoding Batch Size</Form.Label>
+                  <Form.Control
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={formData.geocoding_batch_size}
+                    onChange={(e) => handleChange('geocoding_batch_size', e.target.value)}
+                    isInvalid={!!validationErrors.geocoding_batch_size}
+                    placeholder="5"
+                  />
+                  <Form.Control.Feedback type="invalid">
+                    {validationErrors.geocoding_batch_size}
+                  </Form.Control.Feedback>
+                  <Form.Text className="text-muted">
+                    Number of addresses to geocode in each batch (smaller batches show more frequent progress updates)
+                  </Form.Text>
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                {/* Empty column for layout balance */}
               </Col>
             </Row>
             

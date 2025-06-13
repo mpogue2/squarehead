@@ -66,7 +66,14 @@ export const useNextSchedule = () => {
 
 // Hook for creating a new next schedule
 export const useCreateNextSchedule = () => {
-  const queryClient = useQueryClient()
+  // Safe initialization of queryClient
+  let queryClient = null;
+  try {
+    queryClient = useQueryClient();
+  } catch (e) {
+    console.error('Error initializing queryClient in useCreateNextSchedule:', e);
+  }
+  
   const setNextSchedule = useSchedulesStore((state) => state.setNextSchedule)
   const setAssignments = useSchedulesStore((state) => state.setAssignments)
   const { success, error } = useToast()
@@ -83,7 +90,9 @@ export const useCreateNextSchedule = () => {
         setAssignments(response.assignments)
       }
       
-      queryClient.invalidateQueries(['schedules', 'next'])
+      if (queryClient) {
+        queryClient.invalidateQueries(['schedules', 'next'])
+      }
       success(`Schedule created with ${response.count || 0} assignments!`)
     },
     onError: (err) => {
@@ -95,7 +104,14 @@ export const useCreateNextSchedule = () => {
 
 // Hook for updating an assignment
 export const useUpdateAssignment = () => {
-  const queryClient = useQueryClient()
+  // Safe initialization of queryClient
+  let queryClient = null;
+  try {
+    queryClient = useQueryClient();
+  } catch (e) {
+    console.error('Error initializing queryClient in useUpdateAssignment:', e);
+  }
+  
   const updateAssignment = useSchedulesStore((state) => state.updateAssignment)
   const { success, error } = useToast()
   
@@ -104,7 +120,9 @@ export const useUpdateAssignment = () => {
     onSuccess: (data, variables) => {
       const assignment = data.data || data
       updateAssignment(variables.id, assignment)
-      queryClient.invalidateQueries(['schedules'])
+      if (queryClient) {
+        queryClient.invalidateQueries(['schedules'])
+      }
       success('Assignment updated successfully!')
     },
     onError: (err) => {
@@ -116,7 +134,14 @@ export const useUpdateAssignment = () => {
 
 // Hook for promoting next schedule to current
 export const usePromoteSchedule = () => {
-  const queryClient = useQueryClient()
+  // Safe initialization of queryClient
+  let queryClient = null;
+  try {
+    queryClient = useQueryClient();
+  } catch (e) {
+    console.error('Error initializing queryClient in usePromoteSchedule:', e);
+  }
+  
   const setCurrentSchedule = useSchedulesStore((state) => state.setCurrentSchedule)
   const setNextSchedule = useSchedulesStore((state) => state.setNextSchedule)
   const { success, error } = useToast()
@@ -131,7 +156,9 @@ export const usePromoteSchedule = () => {
         setNextSchedule(null) // Clear next schedule after promotion
       }
       
-      queryClient.invalidateQueries(['schedules'])
+      if (queryClient) {
+        queryClient.invalidateQueries(['schedules'])
+      }
       success('Schedule promoted to current successfully!')
     },
     onError: (err) => {
