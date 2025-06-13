@@ -122,6 +122,11 @@ const Map = () => {
 
     // Function to get star color based on member status
     const getStarColor = (status) => {
+      // Handle null/undefined status values
+      if (!status) {
+        return '#28a745'; // Default to assignable green if status is missing
+      }
+      
       switch (status) {
         case 'assignable':
           return '#28a745' // Bootstrap success green (light green)
@@ -255,6 +260,11 @@ const Map = () => {
   const createMemberMarker = (member, lat, lng, address) => {
     // Function to get star color based on member status
     const getStarColor = (status) => {
+      // Handle null/undefined status values
+      if (!status) {
+        return '#28a745'; // Default to assignable green if status is missing
+      }
+      
       switch (status) {
         case 'assignable':
           return '#28a745' // Bootstrap success green (light green)
@@ -287,7 +297,7 @@ const Map = () => {
       position: { lat, lng },
       map: mapInstanceRef.current,
       icon: memberIcon,
-      title: `${member.first_name} ${member.last_name}\n${address}\nStatus: ${member.status}`,
+      title: `${member.first_name || ''} ${member.last_name || ''}\n${address || ''}\nStatus: ${member.status || 'Unknown'}`,
       zIndex: 100
     })
 
@@ -296,17 +306,17 @@ const Map = () => {
       content: `
         <div style="max-width: 200px;">
           <h6 style="margin: 0 0 5px 0; color: #333;">
-            ${member.first_name} ${member.last_name}
+            ${member.first_name || ''} ${member.last_name || ''}
           </h6>
           <p style="margin: 0 0 3px 0; font-size: 12px; color: #666;">
-            ${member.email}
+            ${member.email || 'No email'}
           </p>
           ${member.phone ? `<p style="margin: 0 0 3px 0; font-size: 12px; color: #666;">${member.phone}</p>` : ''}
           <p style="margin: 0 0 3px 0; font-size: 11px;">
-            Status: <span style="color: ${getStarColor(member.status)}; font-weight: bold;">${member.status.charAt(0).toUpperCase() + member.status.slice(1)}</span>
+            Status: <span style="color: ${getStarColor(member.status)}; font-weight: bold;">${member.status ? (member.status.charAt(0).toUpperCase() + member.status.slice(1)) : 'Unknown'}</span>
           </p>
           <p style="margin: 0; font-size: 11px; color: #888;">
-            ${address}
+            ${address || 'No address'}
           </p>
           ${member.latitude && member.longitude ? '<p style="margin: 0; font-size: 10px; color: #aaa;">(Using cached coordinates)</p>' : '<p style="margin: 0; font-size: 10px; color: #aaa;">(Geocoded on demand)</p>'}
         </div>

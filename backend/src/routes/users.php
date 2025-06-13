@@ -719,69 +719,126 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     continue;
                 }
                 
-                // Check if user with email already exists
-                error_log("CSV Import: Checking if email '{$data['email']}' exists");
-                $existingUser = $userModel->findByEmail($data['email']);
+                // REVISED BEHAVIOR: Check if a user with this first name, last name, and email already exists
+                error_log("CSV Import: Checking if user '{$data['first_name']} {$data['last_name']}' with email '{$data['email']}' exists");
                 
-                // NEW BEHAVIOR: Instead of skipping, handle duplicate emails by creating unique email addresses
-                if ($existingUser) {
-                    // Log that we found a duplicate but will still import
+                // First check for the permanent admin account - always protect it
+                if ($data['email'] === 'mpogue@zenstarstudio.com') {
                     $timestamp = date('Y-m-d H:i:s');
-                    $logMessage = "[{$timestamp}] CSV Import: DUPLICATE EMAIL - '{$data['email']}' already exists for " .
-                                 "'{$existingUser['first_name']} {$existingUser['last_name']}' but will create new record for " .
-                                 "'{$data['first_name']} {$data['last_name']}' at Row=" . ($i + 1) . 
-                                 " in file " . (isset($_FILES['file']) ? $_FILES['file']['name'] : 'unknown');
+                    $protectLog = "[{$timestamp}] CSV Import: PROTECTED ADMIN - Skipping update for permanent admin record mpogue@zenstarstudio.com";
+                    error_log($protectLog);
+                    file_put_contents(__DIR__ . '/../../logs/app.log', $protectLog . "\n", FILE_APPEND);
                     
-                    // Log to PHP's error_log
+                    // Count it as skipped
+                    $skipCount++;
+                    continue; // Skip to next record
+                }
+                
+                // Check for exact match on first name, last name, and email
+                $sql = "SELECT * FROM users WHERE first_name = ? AND last_name = ? AND email = ?";
+                $stmt = $userModel->getDb()->prepare($sql);
+                $stmt->execute([$data['first_name'], $data['last_name'], $data['email']]);
+                $exactMatchUser = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                // If we have an exact match on first_name, last_name, and email, update that record
+                if ($exactMatchUser) {
+                    $timestamp = date('Y-m-d H:i:s');
+                    $logMessage = "[{$timestamp}] CSV Import: UPDATING exact match record for '{$data['first_name']} {$data['last_name']}' with email '{$data['email']}' at Row=" . ($i + 1);
                     error_log($logMessage);
                     
-                    // Also log directly to our app.log file for improved reliability
+                    // Log to app.log file
                     $appLogPath = __DIR__ . '/../../logs/app.log';
                     file_put_contents($appLogPath, $logMessage . "\n", FILE_APPEND);
                     
-                    // Special case for known troublesome records
-                    if (($data['email'] === 'karl.jackie@gmail.com' && $data['first_name'] === 'Jackie' && $data['last_name'] === 'Daemion') ||
-                        ($data['email'] === 'karl.jackie@gmail.com' && $data['first_name'] === 'Karl' && $data['last_name'] === 'Belser')) {
-                        $specialLog = "[{$timestamp}] CSV Import: SPECIAL CASE DETECTED for Karl/Jackie couple - '{$data['first_name']} {$data['last_name']}'";
-                        error_log($specialLog);
-                        file_put_contents($appLogPath, $specialLog . "\n", FILE_APPEND);
+                    // Determine status
+                    $status = 'assignable';
+                    
+                    // Check for LOA date in the LOA column
+                    if (isset($data['loa']) && !empty($data['loa'])) {
+                        // If there's any non-empty value in the LOA column, set status to LOA
+                        if (trim($data['loa']) !== '') {
+                            $status = 'loa';
+                        }
                     }
                     
-                    // Create a unique email address by appending a suffix
-                    // Format: original+firstname.lastname@domain.com
-                    $originalEmail = $data['email'];
-                    list($emailUser, $emailDomain) = explode('@', $originalEmail);
+                    // Check if Title column contains Booster
+                    if (isset($data['title']) && stripos($data['title'], 'booster') !== false) {
+                        $status = 'booster';
+                    }
                     
-                    // Generate a suffix based on first and last name
-                    // Make sure everything is lowercase for consistency
-                    $cleanFirstName = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $data['first_name']));
-                    $cleanLastName = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $data['last_name']));
-                    $emailSuffix = $cleanFirstName . '.' . $cleanLastName;
+                    // Check if explicit status is provided
+                    if (isset($data['status']) && !empty($data['status'])) {
+                        $status = strtolower($data['status']);
+                    }
                     
-                    // Log the transformation for debugging
-                    $transformLog = "[" . date('Y-m-d H:i:s') . "] Email transform: '{$data['first_name']} {$data['last_name']}' -> suffix: '{$emailSuffix}'";
-                    error_log($transformLog);
-                    file_put_contents(__DIR__ . '/../../logs/app.log', $transformLog . "\n", FILE_APPEND);
+                    // Prepare the update data
+                    $updateData = [
+                        'phone' => $data['phone'] ?? $exactMatchUser['phone'],
+                        'address' => $data['address'] ?? $exactMatchUser['address'],
+                        'status' => $status,
+                        'birthday' => isset($birthday) ? $birthday : $exactMatchUser['birthday'],
+                    ];
                     
-                    // Create new unique email
-                    $data['email'] = $emailUser . '+' . $emailSuffix . '@' . $emailDomain;
+                    // Preserve existing values for partner_id, friend_id, is_admin status
                     
-                    // Store the original email and the existing user's ID in the notes field
-                    $noteText = "Original shared email: {$originalEmail} | Shared with user ID: {$existingUser['id']} ({$existingUser['first_name']} {$existingUser['last_name']})";
-                    $data['notes'] = $noteText;
+                    // If notes exist in the import data, append them to existing notes
+                    if (isset($data['notes']) && !empty($data['notes'])) {
+                        if (!empty($exactMatchUser['notes'])) {
+                            $updateData['notes'] = $exactMatchUser['notes'] . "\nCSV Import " . date('Y-m-d') . ": " . $data['notes'];
+                        } else {
+                            $updateData['notes'] = "CSV Import " . date('Y-m-d') . ": " . $data['notes'];
+                        }
+                    }
                     
-                    // Explicitly log the creation attempt
+                    try {
+                        // Update the existing record
+                        $userModel->update($exactMatchUser['id'], $updateData);
+                        
+                        // Log success
+                        $updateLog = "[{$timestamp}] CSV Import: SUCCESSFULLY updated exact match user ID {$exactMatchUser['id']} ({$data['email']})";
+                        error_log($updateLog);
+                        file_put_contents($appLogPath, $updateLog . "\n", FILE_APPEND);
+                        
+                        // Count as update
+                        $updateCount = ($updateCount ?? 0) + 1;
+                        
+                        // Skip to the next record
+                        continue;
+                    } catch (Exception $e) {
+                        // Log failure
+                        $errorLog = "[{$timestamp}] CSV Import: ERROR updating exact match user ID {$exactMatchUser['id']}: " . $e->getMessage();
+                        error_log($errorLog);
+                        file_put_contents($appLogPath, $errorLog . "\n", FILE_APPEND);
+                        
+                        // Add to errors list
+                        $errors[] = "Row " . ($i + 1) . ": Failed to update existing record: " . $e->getMessage();
+                        continue;
+                    }
+                } 
+                
+                // Now check if there are any users with the same email (for shared email handling)
+                $stmt = $userModel->getDb()->prepare("SELECT * FROM users WHERE email = ?");
+                $stmt->execute([$data['email']]);
+                $sharedEmailUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // If users with the same email exist, but none match this exact first_name and last_name
+                if (!empty($sharedEmailUsers)) {
                     $timestamp = date('Y-m-d H:i:s');
-                    $logMessage = "[{$timestamp}] CSV Import: CREATING user with modified email '{$data['email']}' for '{$data['first_name']} {$data['last_name']}' (original email: {$originalEmail})";
-                    error_log($logMessage);
-                    file_put_contents(__DIR__ . '/../../logs/app.log', $logMessage . "\n", FILE_APPEND);
+                    $sharedLog = "[{$timestamp}] CSV Import: SHARED EMAIL DETECTED - '{$data['email']}' is shared with " . count($sharedEmailUsers) . " existing users";
+                    error_log($sharedLog);
+                    file_put_contents(__DIR__ . '/../../logs/app.log', $sharedLog . "\n", FILE_APPEND);
                     
-                    error_log("CSV Import: Created unique email '{$data['email']}' for duplicate entry");
+                    // We'll create a new user with the SAME email (not modified)
+                    // But first, log the information about the shared email users
+                    foreach ($sharedEmailUsers as $idx => $existingUser) {
+                        $sharedUserLog = "[{$timestamp}] CSV Import: SHARED EMAIL USER #" . ($idx + 1) . ": ID {$existingUser['id']}, Name: {$existingUser['first_name']} {$existingUser['last_name']}";
+                        error_log($sharedUserLog);
+                        file_put_contents(__DIR__ . '/../../logs/app.log', $sharedUserLog . "\n", FILE_APPEND);
+                    }
                     
-                    // We'll count these as "duplicates handled" rather than just skipped
-                    $skipCount++;
-                    
-                    // Continue with import using the new unique email
+                    // Mark this import as having shared emails for partner linking later
+                    $hasSharedEmail = true;
+                    $sharedWithUsers = $sharedEmailUsers;
                 }
                 
                 // Default status 
@@ -921,22 +978,81 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                 
                 error_log("CSV Import: Creating new user with data: " . json_encode($userData));
                 
+                // Track if this is a shared email that we need to handle partnerships for
+                $sharedEmailPartnershipsCreated = 0;
+                
                 try {
-                    $newUser = $userModel->create($userData);
+                    // Begin transaction to ensure atomicity of user creation and partner linking
+                    $userModel->getDb()->beginTransaction();
                     
-                    $successLogMessage = "[{$timestamp}] CSV Import: SUCCESSFULLY created user ID " . ($newUser['id'] ?? 'unknown') . " for {$userData['first_name']} {$userData['last_name']} with email {$userData['email']}";
+                    // Create the new user record
+                    $newUser = $userModel->create($userData);
+                    $newUserId = $newUser['id'] ?? null;
+                    
+                    if (!$newUserId) {
+                        throw new Exception("Failed to get ID of newly created user");
+                    }
+                    
+                    // If this user has a shared email with existing users, create partner relationships
+                    if (isset($hasSharedEmail) && $hasSharedEmail && !empty($sharedWithUsers)) {
+                        $sharedEmailLog = "[{$timestamp}] CSV Import: Setting up partner relationships for shared email '{$userData['email']}'";
+                        error_log($sharedEmailLog);
+                        file_put_contents(__DIR__ . '/../../logs/app.log', $sharedEmailLog . "\n", FILE_APPEND);
+                        
+                        // Loop through all users with this email and establish partner relationships
+                        foreach ($sharedWithUsers as $partnerUser) {
+                            // Skip if they already have partners assigned
+                            $sql = "SELECT partner_id FROM users WHERE id = ?";
+                            $stmt = $userModel->getDb()->prepare($sql);
+                            $stmt->execute([$partnerUser['id']]);
+                            $existingPartnerId = $stmt->fetchColumn();
+                            
+                            if (empty($existingPartnerId)) {
+                                // Set up bidirectional partnership
+                                $sql1 = "UPDATE users SET partner_id = ? WHERE id = ?";
+                                $stmt1 = $userModel->getDb()->prepare($sql1);
+                                $stmt1->execute([$newUserId, $partnerUser['id']]);
+                                
+                                $sql2 = "UPDATE users SET partner_id = ? WHERE id = ?";
+                                $stmt2 = $userModel->getDb()->prepare($sql2);
+                                $stmt2->execute([$partnerUser['id'], $newUserId]);
+                                
+                                $partnerLog = "[{$timestamp}] CSV Import: CREATED partnership between new user ID {$newUserId} and existing user ID {$partnerUser['id']} with shared email '{$userData['email']}'";
+                                error_log($partnerLog);
+                                file_put_contents(__DIR__ . '/../../logs/app.log', $partnerLog . "\n", FILE_APPEND);
+                                
+                                $sharedEmailPartnershipsCreated++;
+                                
+                                // Once we've established one partnership, break - we only want one partner
+                                break;
+                            } else {
+                                $skipLog = "[{$timestamp}] CSV Import: Skipping partnership for user ID {$partnerUser['id']} - already has partner ID {$existingPartnerId}";
+                                error_log($skipLog);
+                                file_put_contents(__DIR__ . '/../../logs/app.log', $skipLog . "\n", FILE_APPEND);
+                            }
+                        }
+                    }
+                    
+                    // Commit transaction - user creation and partner linking
+                    $userModel->getDb()->commit();
+                    
+                    // Log successful creation
+                    $successLogMessage = "[{$timestamp}] CSV Import: SUCCESSFULLY created user ID {$newUserId} for {$userData['first_name']} {$userData['last_name']} with email {$userData['email']}";
                     error_log($successLogMessage);
                     file_put_contents(__DIR__ . '/../../logs/app.log', $successLogMessage . "\n", FILE_APPEND);
                     
-                    error_log("CSV Import: Successfully created user ID: " . ($newUser['id'] ?? 'unknown'));
+                    // Increment counters
                     $importCount++;
+                    if ($sharedEmailPartnershipsCreated > 0) {
+                        $automaticPartnershipsCreated = ($automaticPartnershipsCreated ?? 0) + $sharedEmailPartnershipsCreated;
+                    }
                     
-                    // Store relationship info for second pass
+                    // Store relationship info for second pass (for explicit partner/friend info in CSV)
                     if (!empty($data['partner_first_name']) || !empty($data['partner_last_name']) || 
                         !empty($data['friend_first_name']) || !empty($data['friend_last_name'])) {
                         
                         $relationshipsToProcess[] = [
-                            'user_id' => $newUser['id'],
+                            'user_id' => $newUserId,
                             'email' => $data['email'],
                             'partner_first_name' => $data['partner_first_name'] ?? '',
                             'partner_last_name' => $data['partner_last_name'] ?? '',
@@ -945,6 +1061,11 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                         ];
                     }
                 } catch (Exception $e) {
+                    // Rollback transaction on error
+                    if ($userModel->getDb()->inTransaction()) {
+                        $userModel->getDb()->rollBack();
+                    }
+                    
                     $errorLogMessage = "[{$timestamp}] CSV Import: ERROR creating user for {$userData['first_name']} {$userData['last_name']} with email {$userData['email']}: " . $e->getMessage();
                     error_log($errorLogMessage);
                     file_put_contents(__DIR__ . '/../../logs/app.log', $errorLogMessage . "\n", FILE_APPEND);
@@ -970,6 +1091,7 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
         
         // Track shared email addresses for automatic partner linking
         $sharedEmailMap = [];
+        $automaticPartnershipsCreated = 0;
         
         // Log start of partner relationship detection
         $timestamp = date('Y-m-d H:i:s');
@@ -1400,10 +1522,16 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
         }
         
         // Prepare response
-        error_log("CSV Import: Final counts - importCount: {$importCount}, skipCount: {$skipCount}, autoPartnerships: {$automaticPartnershipsCreated}");
+        $updateCount = isset($updateCount) ? $updateCount : 0;
+        $sharedEmailCount = isset($sharedEmailCount) ? $sharedEmailCount : 0;
+        
+        error_log("CSV Import: Final counts - importCount: {$importCount}, updateCount: {$updateCount}, skipCount: {$skipCount}, sharedEmails: {$sharedEmailCount}, autoPartnerships: {$automaticPartnershipsCreated}");
+        
         $resultData = [
             'imported' => $importCount,
-            'duplicates_handled' => $skipCount, // This is now duplicates handled, not skipped
+            'updated' => $updateCount,
+            'skipped' => $skipCount, // This is for skipped records like protected admin
+            'shared_emails' => $sharedEmailCount, // Count of records with shared emails
             'relationships_processed' => $relationshipsProcessed,
             'relationships_skipped' => $relationshipsSkipped,
             'auto_partnerships' => $automaticPartnershipsCreated,
@@ -1412,8 +1540,11 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
         ];
         
         $message = "Import completed: {$importCount} users imported";
+        if ($updateCount > 0) {
+            $message .= ", {$updateCount} existing records updated";
+        }
         if ($skipCount > 0) {
-            $message .= ", {$skipCount} duplicate emails handled with unique addresses";
+            $message .= ", {$skipCount} records skipped";
         }
         if ($automaticPartnershipsCreated > 0) {
             $message .= ", {$automaticPartnershipsCreated} automatic partnerships created for shared emails";
