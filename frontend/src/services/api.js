@@ -3,7 +3,7 @@ import axios from 'axios'
 // Create axios instance with default config
 const api = axios.create({
   baseURL: 'http://localhost:8000/api',
-  timeout: 10000,
+  timeout: 60000, // Increased timeout to 60 seconds for longer operations
   headers: {
     'Content-Type': 'application/json',
   },
@@ -64,6 +64,7 @@ export const apiService = {
   updateUser: (id, userData) => api.put(`/users/${id}`, userData),
   deleteUser: (id) => api.delete(`/users/${id}`),
   geocodeAllAddresses: () => api.post('/users/geocode-all'),
+  getGeocodingProgress: () => api.get('/users/geocode-progress'),
   importMembersCSV: (file) => {
     console.log('🌐 API importMembersCSV called with file:', file.name, 'size:', file.size)
     

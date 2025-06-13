@@ -13,6 +13,8 @@ const Map = () => {
   const { data: settings, isLoading: settingsLoading } = useSettings()
   const { isAdmin } = useAuth()
   const geocodeAddressesMutation = useGeocodeAllAddresses()
+  // No need to track progress anymore
+  const [mapReady, setMapReady] = useState(false)
 
   // Default center coordinates for San Jose (fallback)
   const SAN_JOSE_CENTER = { lat: 37.3382, lng: -121.8863 }
@@ -63,11 +65,20 @@ const Map = () => {
   }, [settingsLoading, settings, GOOGLE_API_KEY])
 
   useEffect(() => {
-    // Update markers when members data changes
-    if (mapInstanceRef.current && members.length > 0) {
-      addMemberMarkers()
+    // Update markers when members data changes or geocoding completes
+    if (mapInstanceRef.current && members.length > 0 && mapReady) {
+      console.log('Refreshing member markers on map');
+      
+      // Log count of members with coordinates for debugging
+      const membersWithCoordinates = members.filter(member => 
+        member.latitude && member.longitude
+      );
+      
+      console.log(`Members with coordinates: ${membersWithCoordinates.length} of ${members.length} total members`);
+      
+      addMemberMarkers();
     }
-  }, [members])
+  }, [members, mapReady, geocodeAddressesMutation.isSuccess])
 
   const initializeMap = () => {
     try {
@@ -91,6 +102,7 @@ const Map = () => {
       }
 
       setIsLoading(false)
+      setMapReady(true)
     } catch (err) {
       setError('Failed to initialize map: ' + err.message)
       setIsLoading(false)
@@ -117,8 +129,22 @@ const Map = () => {
     })
   }
 
+  // Keep a reference to all member markers so we can clear them
+  const markersRef = useRef([]);
+  
   const addMemberMarkers = () => {
     if (!mapInstanceRef.current || !window.google) return
+    
+    console.log(`Adding member markers: ${members.length} total members`);
+    
+    // Clear existing markers first
+    if (markersRef.current.length > 0) {
+      console.log(`Clearing ${markersRef.current.length} existing markers`);
+      markersRef.current.forEach(marker => {
+        marker.setMap(null);
+      });
+      markersRef.current = [];
+    }
 
     // Function to get star color based on member status
     const getStarColor = (status) => {
@@ -300,6 +326,9 @@ const Map = () => {
       title: `${member.first_name || ''} ${member.last_name || ''}\n${address || ''}\nStatus: ${member.status || 'Unknown'}`,
       zIndex: 100
     })
+    
+    // Add marker to our reference array so we can clear it later
+    markersRef.current.push(marker)
 
     // Add info window with member details
     const infoWindow = new window.google.maps.InfoWindow({
@@ -343,30 +372,49 @@ const Map = () => {
 
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h1>Member Locations Map</h1>
-        {isAdmin && (
-          <Button 
-            variant="primary" 
-            onClick={() => geocodeAddressesMutation.mutate()}
-            disabled={geocodeAddressesMutation.isLoading}
-          >
-            {geocodeAddressesMutation.isLoading ? (
-              <>
-                <Spinner
-                  as="span"
-                  animation="border"
-                  size="sm"
-                  role="status"
-                  aria-hidden="true"
-                  className="me-2"
-                />
-                Geocoding...
-              </>
-            ) : (
-              'Geocode All Addresses'
-            )}
-          </Button>
+      <div className="d-flex flex-column mb-3">
+        <div className="d-flex justify-content-between align-items-center">
+          <h1>Member Locations Map</h1>
+          {isAdmin && (
+            <Button 
+              variant="primary" 
+              onClick={() => geocodeAddressesMutation.mutate()}
+              disabled={geocodeAddressesMutation.isLoading}
+            >
+              {geocodeAddressesMutation.isLoading ? (
+                <>
+                  <Spinner
+                    as="span"
+                    animation="border"
+                    size="sm"
+                    role="status"
+                    aria-hidden="true"
+                    className="me-2"
+                  />
+                  Geocoding...
+                </>
+              ) : (
+                'Geocode All Addresses'
+              )}
+            </Button>
+          )}
+        </div>
+        
+        {/* Simple loading indicator for geocoding operation */}
+        {geocodeAddressesMutation.isLoading && (
+          <div className="mt-2">
+            <div className="d-flex align-items-center">
+              <Spinner
+                as="span"
+                animation="border"
+                size="sm"
+                role="status"
+                aria-hidden="true"
+                className="me-2"
+              />
+              <small className="text-muted">Geocoding addresses... Please wait until the process completes.</small>
+            </div>
+          </div>
         )}
       </div>
       

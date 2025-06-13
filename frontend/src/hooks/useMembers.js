@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useCallback, useEffect } from 'react'
+import { useMemo, useCallback, useEffect, useState, useRef } from 'react'
 import { apiService } from '../services/api'
 import useMembersStore from '../store/membersStore'
 import useSettingsStore from '../store/settingsStore'
@@ -73,7 +73,9 @@ export const useCreateMember = () => {
     onSuccess: (data) => {
       const member = data.data || data
       addMember(member)
-      queryClient.invalidateQueries(['members'])
+      if (queryClient) {
+        queryClient.invalidateQueries(['members'])
+      }
       success('Member created successfully!')
     },
     onError: (err) => {
@@ -93,7 +95,9 @@ export const useUpdateMember = () => {
   useEffect(() => {
     const handleRefetch = () => {
       console.log('Manually refetching members from event');
-      queryClient.invalidateQueries(['members']);
+      if (queryClient) {
+        queryClient.invalidateQueries(['members'])
+      };
     };
     
     window.addEventListener('refetch-members', handleRefetch);
@@ -122,7 +126,9 @@ export const useUpdateMember = () => {
       updateMember(variables.id, member)
       
       // Force a full refetch to make sure UI is updated with fresh data
-      queryClient.invalidateQueries(['members'])
+      if (queryClient) {
+        queryClient.invalidateQueries(['members'])
+      }
       
       // Show success message
       success('Member updated successfully!')
@@ -151,7 +157,9 @@ export const useDeleteMember = () => {
     mutationFn: apiService.deleteUser,
     onSuccess: (_, memberId) => {
       removeMember(memberId)
-      queryClient.invalidateQueries(['members'])
+      if (queryClient) {
+        queryClient.invalidateQueries(['members'])
+      }
       success('Member deleted successfully!')
     },
     onError: (err) => {
@@ -257,35 +265,149 @@ export const useMemberSelection = () => {
 
 // Hook for geocoding all member addresses
 export const useGeocodeAllAddresses = () => {
-  const queryClient = useQueryClient()
-  const { success, error } = useToast()
+  // Safe initialization of queryClient
+  const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
   
-  return useMutation({
+  // Reference to track if we're in the middle of geocoding
+  const geocodingRef = useRef(false);
+  
+  // Create the mutation
+  const mutation = useMutation({
     mutationFn: apiService.geocodeAllAddresses,
+    
+    onMutate: () => {
+      // Set geocoding flag
+      geocodingRef.current = true;
+    },
+    
     onSuccess: (data) => {
-      queryClient.invalidateQueries(['members'])
-      const result = data.data || data
-      const geocoded = result.geocoded || 0
-      const errors = result.errors || []
+      // Stop geocoding flag
+      geocodingRef.current = false;
       
-      let message = `Geocoding completed: ${geocoded} addresses geocoded`
-      if (errors.length > 0) {
-        message += `, ${errors.length} errors occurred`
+      console.log('Geocoding success response:', data);
+      
+      // Parse result data properly, supporting different response formats
+      const result = data.data || data;
+      const geocoded = result.geocoded || 0;
+      const total = result.total || 0;
+      const errors = result.errors || [];
+      
+      // Force refresh all member data
+      if (queryClient) {
+        console.log('Forcing immediate refetch of members data to update map markers');
+        
+        // First invalidate all member-related queries
+        queryClient.invalidateQueries(['members']);
+        queryClient.invalidateQueries(['members', 'coordinates']);
+        
+        // Then force immediate refetch
+        queryClient.refetchQueries({
+          queryKey: ['members'],
+          type: 'active',
+          exact: false,
+          stale: true
+        });
       }
       
-      success(message)
+      // Determine appropriate message based on results
+      let message;
+      
+      // Always consider some geocoding, some errors a success
+      if (geocoded > 0) {
+        // At least some addresses were geocoded
+        message = `Geocoding completed: ${geocoded} addresses geocoded`;
+        if (errors.length > 0) {
+          message += `, ${errors.length} errors occurred`;
+          
+          // Log errors for debugging but don't show error toast
+          console.log('Geocoding errors:', errors);
+        }
+        
+        // Show success toast for partial successes
+        success(message);
+      } else if (errors.length === 0) {
+        // No addresses needed geocoding
+        message = "No addresses found that need geocoding";
+        success(message);
+      } else {
+        // Complete failure (zero successes, some errors)
+        message = `Geocoding failed: ${errors.length} errors occurred`;
+        
+        // Show error details for complete failures
+        let detailedMessage = message + "\n\nCommon causes:";
+        detailedMessage += "\n• Incomplete addresses (missing city/state)";
+        detailedMessage += "\n• Invalid addresses";
+        detailedMessage += "\n• Network connectivity issues";
+        
+        // Log all errors
+        console.error('Geocoding errors:', errors);
+        
+        // Show error toast with detailed message
+        showError(detailedMessage);
+      }
     },
+    
     onError: (err) => {
-      console.error('Failed to geocode addresses:', err)
-      error('Failed to geocode addresses. Please try again.')
+      // Stop geocoding flag
+      geocodingRef.current = false;
+      
+      // Clear interval if it exists
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      
+      console.error('Failed to geocode addresses:', err);
+      
+      let errorMessage = 'Failed to geocode addresses.';
+      
+      // Check for specific error types
+      if (err.response) {
+        // Server responded with error status
+        const status = err.response.status;
+        const data = err.response.data;
+        
+        console.error('Error response:', status, data);
+        
+        if (status === 403) {
+          errorMessage = 'Admin access required to geocode addresses.';
+        } else if (status === 400 && data?.message) {
+          // Check for specific known errors
+          if (data.message.includes('Google Maps API key not configured')) {
+            errorMessage = 'Google Maps API key not configured. Please set it in Settings.';
+          } else {
+            errorMessage = data.message;
+          }
+        } else if (data?.message) {
+          errorMessage = data.message;
+        }
+      } else if (err.message && err.message.includes('Network Error')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      // Show the error
+      showError(errorMessage + ' Please try again.');
     }
-  })
+  });
+  
+  // Return just the mutation
+  return mutation;
 }
 
 // Hook for CSV import/export
 export const useMemberImportExport = ({ onImportResults } = {}) => {
   const { success: showSuccess, error: showError } = useToast()
-  const queryClient = useQueryClient()
+  
+  // Safe initialization of queryClient (wrapped in try/catch)
+  let queryClient = null;
+  try {
+    queryClient = useQueryClient();
+  } catch (e) {
+    console.error('Error initializing queryClient in useMemberImportExport:', e);
+  }
   
   const exportCSV = useMutation({
     mutationFn: async () => {
@@ -802,7 +924,9 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
   const importCSV = useMutation({
     mutationFn: (file) => apiService.importMembersCSV(file),
     onSuccess: (response) => {
-      queryClient.invalidateQueries(['members'])
+      if (queryClient) {
+        queryClient.invalidateQueries(['members'])
+      }
       console.log('Import CSV response:', response);
       console.log('Import CSV response type:', typeof response);
       console.log('Import CSV response keys:', Object.keys(response || {}));
@@ -811,13 +935,17 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
       // Let the UI components handle the different response formats
       console.log('Import CSV raw response:', response);
       
-      // If callback provided, use it (for modal display)
-      // Pass the complete response object to allow handling different formats
+      // If callback provided, use it (for modal display) and skip showing toasts
+      // This is important to prevent duplicate toasts since the callback component
+      // will handle its own toast messages
       if (onImportResults) {
+        // Pass response to the callback but don't show any toasts here
+        // The callback component (Members.jsx) will handle showing toasts
         onImportResults(response)
         return
       }
       
+      // If we reach here, there's no callback, so we need to show our own toast
       // Extract statistics for toast notifications, handling both formats
       // This could be data.data (nested API response), data (first level), or direct properties
       const stats = response?.data?.data || response?.data || response || {};
@@ -851,6 +979,7 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
         // Use error toast for better visibility when there are errors
         showError(message, { delay: 10000 }) // Longer delay for errors
       } else {
+        // Only show a success toast here if we don't have a callback
         showSuccess(message)
       }
     },
@@ -871,6 +1000,53 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
         console.error('Original error:', err.originalError)
       }
       
+      // Check if the "error" message actually contains a success message
+      // This happens when the backend returns a success response but the frontend misinterprets it
+      const isSuccessMessage = err.message && (
+          err.message.includes('Import completed') || 
+          err.message.includes('users imported') ||
+          err.message.includes('records updated') ||
+          err.message.includes('geocoded addresses')
+      );
+      
+      if (isSuccessMessage) {
+        console.log('Detected success message in error response (in hook), treating as success');
+        
+        // Try to extract the message (simplified version)
+        let successMessage = 'Import completed successfully';
+        
+        // Try to extract from JSON format
+        try {
+          const messageMatch = err.message.match(/message":"([^"]+)"/);
+          if (messageMatch && messageMatch[1]) {
+            successMessage = messageMatch[1];
+          }
+          // Or extract from error message directly
+          else if (err.message.includes('Import completed')) {
+            const directMatch = err.message.match(/Import completed:?\s*(.*?)(?:\.|\n|$)/);
+            if (directMatch && directMatch[1]) {
+              successMessage = `Import completed: ${directMatch[1]}`;
+            }
+          }
+        } catch (parseErr) {
+          console.error('Failed to parse success message from error:', parseErr);
+        }
+        
+        // Refresh data
+        if (queryClient) {
+          queryClient.invalidateQueries(['members']);
+        }
+        
+        // Only show success message if we don't have a callback (to prevent duplicate toasts)
+        if (!onImportResults) {
+          showSuccess(successMessage);
+        }
+        
+        // Exit early - don't show error toast
+        return;
+      }
+      
+      // If we're here, it's a genuine error
       let errorMessage = 'Failed to import members. Please check your file format and try again.'
       
       // Add more detail if available
@@ -878,7 +1054,10 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
         errorMessage += ' Error: ' + err.message
       }
       
-      showError(errorMessage)
+      // Only show error toast if we don't have a callback (to prevent duplicate toasts)
+      if (!onImportResults) {
+        showError(errorMessage);
+      }
     }
   })
   
