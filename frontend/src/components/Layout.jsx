@@ -20,6 +20,7 @@ const Layout = () => {
   const clubName = settings?.club_name || 'Square Dance Club'
   const clubSubtitle = settings?.club_subtitle || 'Dance Management System'
   const clubColor = settings?.club_color || '#0d6efd'
+  const clubLogoData = settings?.club_logo_data || null
   
   const handleCloseSidebar = () => setShowSidebar(false)
   const handleShowSidebar = () => setShowSidebar(true)
@@ -39,17 +40,30 @@ const Layout = () => {
       <div className="mb-4">
         <Navbar.Brand className="text-white">
           <div className="d-flex align-items-center">
-            <div 
-              className="rounded-circle d-flex align-items-center justify-content-center me-3"
-              style={{ 
-                width: '40px', 
-                height: '40px', 
-                backgroundColor: clubColor,
-                border: '2px solid rgba(255,255,255,0.3)'
-              }}
-            >
-              <i className="bi bi-music-note text-white"></i>
-            </div>
+            {clubLogoData ? (
+              <img 
+                src={`data:image/jpeg;base64,${clubLogoData}`} 
+                alt="Club Logo" 
+                className="me-3"
+                style={{ 
+                  width: '40px', 
+                  height: '40px', 
+                  objectFit: 'contain'
+                }} 
+              />
+            ) : (
+              <div 
+                className="rounded-circle d-flex align-items-center justify-content-center me-3"
+                style={{ 
+                  width: '40px', 
+                  height: '40px', 
+                  backgroundColor: clubColor,
+                  border: '2px solid rgba(255,255,255,0.3)'
+                }}
+              >
+                <i className="bi bi-music-note text-white"></i>
+              </div>
+            )}
             <div>
               <h5 className="mb-0 text-white">{clubName}</h5>
               {clubSubtitle && (
@@ -187,7 +201,20 @@ const Layout = () => {
           </Button>
           <Navbar.Brand className="text-white">
             <div className="d-flex align-items-center">
-              <i className="bi bi-music-note me-2"></i>
+              {clubLogoData ? (
+                <img 
+                  src={`data:image/jpeg;base64,${clubLogoData}`} 
+                  alt="Club Logo" 
+                  className="me-2"
+                  style={{ 
+                    width: '30px', 
+                    height: '30px', 
+                    objectFit: 'contain'
+                  }} 
+                />
+              ) : (
+                <i className="bi bi-music-note me-2"></i>
+              )}
               <span className="fw-bold">{clubName}</span>
             </div>
           </Navbar.Brand>
