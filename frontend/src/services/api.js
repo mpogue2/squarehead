@@ -86,6 +86,10 @@ export const apiService = {
     
     // Use fetch API directly for maximum compatibility with file uploads
     return new Promise((resolve, reject) => {
+      // Add extensive logging
+      console.log('📤 Starting CSV import using fetch API')
+      console.log('🔑 Authorization header:', `Bearer ${JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token || 'dev-token-valid'}`.substring(0, 20) + '...')
+      
       fetch('http://localhost:8000/api/users/import', {
         method: 'POST',
         body: formData,
@@ -98,14 +102,34 @@ export const apiService = {
       })
       .then(response => {
         console.log('Fetch response status:', response.status)
+        console.log('Fetch response headers:', {
+          'content-type': response.headers.get('content-type'),
+          'content-length': response.headers.get('content-length')
+        })
         
         if (!response.ok) {
-          return response.json().then(errorData => {
-            throw new Error(JSON.stringify(errorData))
+          return response.text().then(errorText => {
+            console.error('Error response text:', errorText)
+            try {
+              // Try to parse as JSON if possible
+              const errorData = JSON.parse(errorText)
+              throw new Error(JSON.stringify(errorData))
+            } catch (e) {
+              // If not JSON, use the raw text
+              throw new Error(errorText || 'Unknown error occurred')
+            }
           })
         }
         
-        return response.json()
+        return response.text().then(text => {
+          console.log('Response text (first 200 chars):', text.substring(0, 200))
+          try {
+            return JSON.parse(text)
+          } catch (e) {
+            console.error('Failed to parse response as JSON:', e)
+            throw new Error('Invalid JSON response from server')
+          }
+        })
       })
       .then(data => {
         console.log('Import successful:', data)
@@ -113,7 +137,24 @@ export const apiService = {
       })
       .catch(error => {
         console.error('Import failed:', error)
-        reject(error)
+        console.error('Error name:', error.name)
+        console.error('Error message:', error.message)
+        console.error('Error stack:', error.stack)
+        
+        // Try to extract and log more details from the error
+        if (error.message && error.message.includes('{')) {
+          try {
+            const errorData = JSON.parse(error.message)
+            console.error('Parsed error data:', errorData)
+          } catch (e) {
+            console.error('Error parsing error message as JSON:', e)
+          }
+        }
+        
+        // Provide more context in the error
+        const enhancedError = new Error(`CSV import failed: ${error.message || 'Unknown error'}`)
+        enhancedError.originalError = error
+        reject(enhancedError)
       })
     })
   },

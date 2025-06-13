@@ -334,6 +334,14 @@ const Members = () => {
         return
       }
       
+      // More extensive file validation
+      if (file.size === 0) {
+        console.error('Empty file detected')
+        alert('The selected file is empty. Please select a valid CSV file.')
+        event.target.value = '' // Reset input
+        return
+      }
+      
       // Log the file object for debugging
       console.log('File details:', {
         name: file.name,
@@ -342,25 +350,51 @@ const Members = () => {
         lastModified: new Date(file.lastModified).toISOString()
       })
       
-      importCSV.mutate(file, {
-        onSuccess: (data) => {
-          console.log('✅ Import completed successfully:', data)
-        },
-        onError: (err) => {
-          console.error('❌ Import failed:', err)
-          if (err.response) {
-            console.error('Error response:', {
-              status: err.response.status,
-              statusText: err.response.statusText,
-              data: err.response.data
-            })
+      // Read the first few bytes to verify it's a valid file
+      const reader = new FileReader()
+      reader.onload = function(e) {
+        const sample = e.target.result.substr(0, 200) // Get first 200 chars
+        console.log('File content sample:', sample)
+        
+        // Proceed with import
+        importCSV.mutate(file, {
+          onSuccess: (data) => {
+            console.log('✅ Import completed successfully:', data)
+            setShowImportResults(true);
+            setImportResults(data.data);
+          },
+          onError: (err) => {
+            console.error('❌ Import failed:', err)
+            
+            // Log detailed error information
+            console.error('Error type:', typeof err)
+            console.error('Error properties:', Object.keys(err))
+            console.error('Error name:', err.name)
+            console.error('Error message:', err.message)
+            console.error('Error stack:', err.stack)
+            
+            if (err.response) {
+              console.error('Error response:', {
+                status: err.response.status,
+                statusText: err.response.statusText,
+                data: err.response.data
+              })
+            }
+            
+            // Show error notification
+            showError('CSV import failed. Please check the file format and try again.');
           }
-        }
-      })
+        })
+      }
+      reader.onerror = function(e) {
+        console.error('Error reading file:', e)
+        alert('Error reading the file. Please try again.')
+      }
+      reader.readAsText(file.slice(0, 1000)) // Read just the beginning of the file
       
       event.target.value = '' // Reset input
     }
-  }, [importCSV, error])
+  }, [importCSV, showError])
   
   // Memoized utility functions
   // This key will force the icon to re-render when sortBy changes
@@ -541,23 +575,7 @@ const Members = () => {
                   type="file"
                   accept=".csv"
                   style={{ display: 'none' }}
-                  onChange={(event) => {
-                    if (event.target.files && event.target.files[0]) {
-                      const file = event.target.files[0];
-                      importCSV.mutate(file, {
-                        onSuccess: (data) => {
-                          console.log('CSV import successful:', data);
-                          setShowImportResults(true);
-                          setImportResults(data.data);
-                          invalidateMembers();
-                        },
-                        onError: (error) => {
-                          console.error('CSV import failed:', error);
-                          toast.error('CSV import failed. Please check the file format and try again.');
-                        }
-                      });
-                    }
-                  }}
+                  onChange={handleImport}
                   disabled={importCSV.isLoading}
                 />
               </Button>

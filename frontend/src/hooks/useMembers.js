@@ -851,7 +851,29 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
     },
     onError: (err) => {
       console.error('Failed to import members:', err)
-      showError('Failed to import members. Please check your file format and try again.')
+      console.error('Error type:', typeof err)
+      console.error('Error properties:', Object.keys(err))
+      console.error('Error name:', err.name)
+      console.error('Error message:', err.message)
+      
+      // Try to extract any response data
+      if (err.response) {
+        console.error('Error response:', err.response)
+      }
+      
+      // If there's an originalError property (from our enhanced error)
+      if (err.originalError) {
+        console.error('Original error:', err.originalError)
+      }
+      
+      let errorMessage = 'Failed to import members. Please check your file format and try again.'
+      
+      // Add more detail if available
+      if (err.message && err.message !== 'Failed to import members') {
+        errorMessage += ' Error: ' + err.message
+      }
+      
+      showError(errorMessage)
     }
   })
   

@@ -308,7 +308,7 @@ $app->get('/api/users/export/csv', function (Request $request, Response $respons
                 '"' . str_replace('"', '""', $user['address'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['is_admin'] ? 'admin' : 'member') . '"',
                 '"' . str_replace('"', '""', $user['status'] === 'loa' ? 'LOA' : $user['status']) . '"',
-                '"' . str_replace('"', '""', $user['birthday'] ?: '') . '"',
+                '"' . str_replace('"', '""', ($user['birthday'] ? str_replace('-', '/', $user['birthday']) : '')) . '"',
                 '"' . str_replace('"', '""', $user['partner_first_name'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['partner_last_name'] ?: '') . '"',
                 '"' . str_replace('"', '""', $user['friend_first_name'] ?: '') . '"',
@@ -478,17 +478,59 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
             $headerLine = trim($lines[0]);
             error_log("CSV header line: " . $headerLine);
             
-            $headers = str_getcsv($headerLine);
+            // Avoid PHP 8.4 warning by specifying the escape parameter
+            $headers = str_getcsv($headerLine, ",", '"', "\\");
             $headers = array_map('trim', $headers);
-            $headers = array_map('strtolower', $headers);
+            
+            // Create a mapping for column synonyms
+            $columnSynonyms = [
+                'Phone' => 'phone',
+                'Address' => 'address',
+                'E-mail' => 'email',
+                'Email' => 'email',
+                'B\'day' => 'b\'day',
+                'Bday' => 'b\'day',
+                'Birthday' => 'birthday',
+                'LOA' => 'loa',
+                'Title' => 'title',
+                'Name' => 'name', // We'll handle the "Last, First" format separately
+                'Last Name' => 'last_name',
+                'First Name' => 'first_name'
+            ];
+            
+            error_log("CSV Import: Column synonym mapping: " . json_encode($columnSynonyms));
+            
+            // Process headers with synonym support
+            error_log("CSV Import: Raw headers before processing: " . json_encode($headers));
+            
+            foreach ($headers as $key => $header) {
+                // Remove quotes if present - often CSV headers might include quotes
+                $cleanHeader = trim(trim($header, '"'));
+                error_log("CSV Import: Processing header: raw='{$header}', cleaned='{$cleanHeader}'");
+                
+                // Check if this header is a known synonym
+                if (isset($columnSynonyms[$cleanHeader])) {
+                    error_log("CSV Import: Mapped header '{$cleanHeader}' to '{$columnSynonyms[$cleanHeader]}'");
+                    $headers[$key] = $columnSynonyms[$cleanHeader];
+                } else {
+                    // Otherwise convert to lowercase as before
+                    error_log("CSV Import: No mapping for header '{$cleanHeader}', converting to lowercase");
+                    $headers[$key] = strtolower($cleanHeader);
+                }
+            }
             
             // Log headers for debugging
-            error_log("CSV Import headers: " . implode(", ", $headers));
+            error_log("CSV Import headers after synonym processing: " . implode(", ", $headers));
+            
+            // Check for name column - if present, we don't need first_name and last_name
+            $hasNameColumn = in_array('name', $headers);
             
             // Check required headers
-            $requiredHeaders = ['first_name', 'last_name', 'email'];
-            $missingHeaders = [];
+            $requiredHeaders = $hasNameColumn ? ['email'] : ['first_name', 'last_name', 'email'];
+            error_log("CSV Import: Required headers: " . implode(', ', $requiredHeaders) . 
+                      ($hasNameColumn ? " ('name' column will be used for first_name and last_name)" : ""));
             
+            $missingHeaders = [];
             foreach ($requiredHeaders as $header) {
                 if (!in_array($header, $headers)) {
                     $missingHeaders[] = $header;
@@ -520,11 +562,28 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     continue; // Skip empty lines
                 }
                 
-                // Log each data line for debugging
-                error_log("Processing CSV row " . $i . ": " . $line);
+                // Skip lines that look like statistical summary info (common format in spreadsheet exports)
+                // Examples:
+                // "  In the "","OnTheRoster",,,,,,
+                // 89,"Current Members",,,,,,
+                // 5,"LOA",,,,,,
+                if (preg_match('/^"?\s*(?:In the|\d+)"?\s*,\s*"(?:OnTheRoster|Current Members|LOA|Booster|Special|Caller\/Cuer)/', $line)) {
+                    error_log("CSV Import: Skipping statistical summary line: " . $line);
+                    continue;
+                }
                 
-                // Parse CSV row
-                $row = str_getcsv($line);
+                // Skip lines with too many quotes (likely malformed)
+                $quoteCount = substr_count($line, '"');
+                if ($quoteCount > count($headers) * 2 + 2) {
+                    error_log("CSV Import: Skipping line with abnormal quote count (" . $quoteCount . "): " . $line);
+                    continue;
+                }
+                
+                // Log each data line for debugging with more detail
+                error_log("CSV Import: Processing row " . $i . " (line " . ($i + 1) . "): " . $line);
+                
+                // Parse CSV row - avoid PHP 8.4 warning by specifying the escape parameter
+                $row = str_getcsv($line, ",", '"', "\\");
                 
                 // Check column count matches header count
                 if (count($row) != count($headers)) {
@@ -533,8 +592,16 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     continue;
                 }
                 
-                // Create associative array from row
-                $data = array_combine($headers, $row);
+                // Clean values - remove quotes and trim
+                $cleanedRow = [];
+                foreach ($row as $i => $value) {
+                    $cleanedRow[$i] = trim(trim($value, '"'));
+                }
+                
+                // Create associative array from row with cleaned values
+                error_log("CSV Import: Row data: " . json_encode($cleanedRow));
+                $data = array_combine($headers, $cleanedRow);
+                error_log("CSV Import: Combined data: " . json_encode($data));
                 
                 // Validate required fields
                 $validationErrors = [];
@@ -549,6 +616,105 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     $validationErrors[] = "Invalid email format";
                 }
                 
+                // Special processing for "Last, First" name format if name column exists
+                if (isset($data['name']) && !empty($data['name']) && (!isset($data['first_name']) || !isset($data['last_name']))) {
+                    // Parse "Last, First" format - use simple string operations instead of regex
+                    error_log("CSV Import: Processing name field: '{$data['name']}'");
+                    
+                    $nameParts = explode(',', $data['name']);
+                    if (count($nameParts) > 1) {
+                        $data['last_name'] = trim($nameParts[0]);
+                        $data['first_name'] = trim($nameParts[1]);
+                        error_log("CSV Import: Parsed name '{$data['name']}' into first_name='{$data['first_name']}' and last_name='{$data['last_name']}'");
+                    } else {
+                        // If not in "Last, First" format, check for space delimiter
+                        $spaceParts = explode(' ', trim($data['name']));
+                        if (count($spaceParts) > 1) {
+                            // Assume last word is last name, rest is first name
+                            $data['last_name'] = array_pop($spaceParts);
+                            $data['first_name'] = implode(' ', $spaceParts);
+                            error_log("CSV Import: Parsed space-delimited name '{$data['name']}' into first_name='{$data['first_name']}' and last_name='{$data['last_name']}'");
+                        } else {
+                            // Single word name, use as last_name
+                            $data['last_name'] = trim($data['name']);
+                            $data['first_name'] = ''; // Empty first name
+                            error_log("CSV Import: Could not parse name '{$data['name']}' in any format, using as last_name only");
+                        }
+                    }
+                }
+                
+                // Skip empty lines or lines with only commas
+                $isEmptyRow = true;
+                foreach ($data as $value) {
+                    if (!empty(trim($value))) {
+                        $isEmptyRow = false;
+                        break;
+                    }
+                }
+                
+                if ($isEmptyRow) {
+                    error_log("CSV Import: Skipping empty row at line " . ($i + 1));
+                    continue;
+                }
+                
+                // Skip rows that look like summary statistics rather than member data
+                // Check if this is a statistics/summary row by looking for specific patterns
+                $isStatisticsRow = false;
+                
+                // Pattern 1: Check if name field contains certain keywords
+                if (isset($data['name'])) {
+                    $keywords = ['OnTheRoster', 'Current Members', 'LOA', 'Booster', 'Caller', 'Cuer', 'Special'];
+                    
+                    foreach ($keywords as $keyword) {
+                        if (stripos($data['name'], $keyword) !== false) {
+                            $isStatisticsRow = true;
+                            error_log("CSV Import: Detected statistics row with keyword '{$keyword}' in name field");
+                            break;
+                        }
+                    }
+                }
+                
+                // Pattern 2: Check if row looks like a count/statistic (row with mostly empty cells and a number)
+                if (!$isStatisticsRow) {
+                    $nonEmptyCount = 0;
+                    $hasNumber = false;
+                    
+                    foreach ($data as $value) {
+                        $trimmedValue = trim($value);
+                        if (!empty($trimmedValue)) {
+                            $nonEmptyCount++;
+                            if (is_numeric($trimmedValue)) {
+                                $hasNumber = true;
+                            }
+                        }
+                    }
+                    
+                    // If row has very few non-empty cells (1-2) and one is a number, likely a summary row
+                    if ($nonEmptyCount <= 2 && $hasNumber) {
+                        $isStatisticsRow = true;
+                        error_log("CSV Import: Detected statistics row with few values and a number at line " . ($i + 1));
+                    }
+                }
+                
+                // Skip if this is a statistics row
+                if ($isStatisticsRow) {
+                    error_log("CSV Import: Skipping statistics row at line " . ($i + 1));
+                    continue;
+                }
+                
+                // Generate an email if it's missing but required
+                if (empty($data['email']) && in_array('email', $requiredHeaders)) {
+                    // Create a placeholder email using name if available
+                    if (!empty($data['last_name']) && !empty($data['first_name'])) {
+                        $data['email'] = strtolower(str_replace(' ', '', $data['first_name'] . '.' . $data['last_name'])) . '@placeholder.com';
+                        error_log("CSV Import: Generated placeholder email {$data['email']} for row " . ($i + 1));
+                        // Remove email from required fields validation
+                        $validationErrors = array_filter($validationErrors, function($err) {
+                            return $err !== "Missing email";
+                        });
+                    }
+                }
+                
                 // Check for validation errors
                 if (!empty($validationErrors)) {
                     $errors[] = "Row " . ($i + 1) . ": " . implode(', ', $validationErrors);
@@ -556,33 +722,150 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                 }
                 
                 // Check if user with email already exists
+                error_log("CSV Import: Checking if email '{$data['email']}' exists");
                 $existingUser = $userModel->findByEmail($data['email']);
                 if ($existingUser) {
+                    error_log("CSV Import: User with email '{$data['email']}' already exists - skipping");
                     $skipCount++;
                     
                     // Check if we need to update any user fields
+                    // Determine status based on LOA date or Title
+                    $status = $existingUser['status']; // Default to existing status
+                    
+                    // Check for LOA date in the LOA column
+                    if (isset($data['loa']) && !empty($data['loa'])) {
+                        // If there's any non-empty value in the LOA column, set status to LOA
+                        // This handles various formats including dates and special values
+                        if (trim($data['loa']) !== '') {
+                            $status = 'loa';
+                            error_log("CSV Import: Updating status to LOA for user {$data['email']} based on LOA value {$data['loa']}");
+                        }
+                    }
+                    
+                    // Check if Title column contains Booster
+                    if (isset($data['title']) && stripos($data['title'], 'booster') !== false) {
+                        $status = 'booster';
+                        error_log("CSV Import: Updating status to booster for user {$data['email']} based on Title {$data['title']}");
+                    }
+                    
+                    // Check if explicit status is provided
+                    if (isset($data['status']) && !empty($data['status'])) {
+                        $status = strtolower($data['status']);
+                    }
+                    
+                    // Handle birthday field - extract MM/DD from B'day column if available
+                    $birthday = $existingUser['birthday']; // Default to existing birthday
+                    if (isset($data['b\'day']) && !empty($data['b\'day'])) {
+                        error_log("CSV Import: Processing birthday field for existing user: '{$data['b\'day']}'");
+                        
+                        // Skip special formats like "6/x"
+                        if (strpos($data['b\'day'], 'x') !== false) {
+                            error_log("CSV Import: Skipping special birthday format {$data['b\'day']}");
+                        }
+                        // Try to extract MM/DD format using simple string operations
+                        else if (strpos($data['b\'day'], '/') !== false) {
+                            $dateParts = explode('/', $data['b\'day']);
+                            if (count($dateParts) >= 2) {
+                                $month = str_pad($dateParts[0], 2, '0', STR_PAD_LEFT);
+                                $day = str_pad($dateParts[1], 2, '0', STR_PAD_LEFT);
+                                $birthday = sprintf("%s/%s", $month, $day);
+                                error_log("CSV Import: Updating birthday to {$birthday} from B'day field {$data['b\'day']} for user {$data['email']}");
+                            } else {
+                                error_log("CSV Import: Could not parse birthday parts from {$data['b\'day']} for existing user");
+                            }
+                        } else {
+                            // Handle numeric only formats like "12" or "1225" (Dec 25)
+                            $cleanDate = preg_replace('/[^0-9]/', '', $data['b\'day']);
+                            if (strlen($cleanDate) == 1 || strlen($cleanDate) == 2) {
+                                // Just month, assume day 1
+                                $month = str_pad($cleanDate, 2, '0', STR_PAD_LEFT);
+                                $birthday = sprintf("%s/01", $month);
+                                error_log("CSV Import: Extracted month-only birthday {$birthday} from {$data['b\'day']} for existing user");
+                            } else if (strlen($cleanDate) == 3 || strlen($cleanDate) == 4) {
+                                // Format like 1225 (Dec 25)
+                                if (strlen($cleanDate) == 3) {
+                                    $month = str_pad(substr($cleanDate, 0, 1), 2, '0', STR_PAD_LEFT);
+                                    $day = str_pad(substr($cleanDate, 1, 2), 2, '0', STR_PAD_LEFT);
+                                } else {
+                                    $month = str_pad(substr($cleanDate, 0, 2), 2, '0', STR_PAD_LEFT);
+                                    $day = str_pad(substr($cleanDate, 2, 2), 2, '0', STR_PAD_LEFT);
+                                }
+                                if ($month > 0 && $month <= 12 && $day > 0 && $day <= 31) {
+                                    $birthday = sprintf("%s/%s", $month, $day);
+                                    error_log("CSV Import: Extracted numeric birthday {$birthday} from {$data['b\'day']} for existing user");
+                                }
+                            }
+                        }
+                    }
+                    elseif (isset($data['birthday']) && !empty($data['birthday'])) {
+                        // If we have a birthday field, process it similarly
+                        error_log("CSV Import: Processing 'birthday' field for existing user: '{$data['birthday']}'");
+                        
+                        if (strpos($data['birthday'], 'x') !== false) {
+                            error_log("CSV Import: Skipping special birthday format {$data['birthday']}");
+                        }
+                        else if (strpos($data['birthday'], '/') !== false) {
+                            $dateParts = explode('/', $data['birthday']);
+                            if (count($dateParts) >= 2) {
+                                $month = str_pad($dateParts[0], 2, '0', STR_PAD_LEFT);
+                                $day = str_pad($dateParts[1], 2, '0', STR_PAD_LEFT);
+                                $birthday = sprintf("%s/%s", $month, $day);
+                                error_log("CSV Import: Updating birthday to {$birthday} from birthday field {$data['birthday']} for user {$data['email']}");
+                            } else {
+                                error_log("CSV Import: Could not parse birthday parts from {$data['birthday']} for existing user");
+                            }
+                        } else {
+                            // Handle numeric only formats like "12" or "1225" (Dec 25)
+                            $cleanDate = preg_replace('/[^0-9]/', '', $data['birthday']);
+                            if (strlen($cleanDate) == 1 || strlen($cleanDate) == 2) {
+                                // Just month, assume day 1
+                                $month = str_pad($cleanDate, 2, '0', STR_PAD_LEFT);
+                                $birthday = sprintf("%s/01", $month);
+                                error_log("CSV Import: Extracted month-only birthday {$birthday} from {$data['birthday']} for existing user");
+                            } else if (strlen($cleanDate) == 3 || strlen($cleanDate) == 4) {
+                                // Format like 1225 (Dec 25)
+                                if (strlen($cleanDate) == 3) {
+                                    $month = str_pad(substr($cleanDate, 0, 1), 2, '0', STR_PAD_LEFT);
+                                    $day = str_pad(substr($cleanDate, 1, 2), 2, '0', STR_PAD_LEFT);
+                                } else {
+                                    $month = str_pad(substr($cleanDate, 0, 2), 2, '0', STR_PAD_LEFT);
+                                    $day = str_pad(substr($cleanDate, 2, 2), 2, '0', STR_PAD_LEFT);
+                                }
+                                if ($month > 0 && $month <= 12 && $day > 0 && $day <= 31) {
+                                    $birthday = sprintf("%s/%s", $month, $day);
+                                    error_log("CSV Import: Extracted numeric birthday {$birthday} from {$data['birthday']} for existing user");
+                                }
+                            } else {
+                                $birthday = $data['birthday'];
+                                error_log("CSV Import: Using birthday value as-is: {$birthday}");
+                            }
+                        }
+                    }
+                    
+                    // Check if any fields need updating
                     $needsUpdate = (!empty($data['address']) && ($data['address'] !== ($existingUser['address'] ?? ''))) ||
-                                  ($data['phone'] !== ($existingUser['phone'] ?? '')) ||
-                                  ($data['status'] !== ($existingUser['status'] ?? '')) ||
-                                  ($data['role'] !== ($existingUser['role'] ?? '')) ||
-                                  ($data['birthday'] !== ($existingUser['birthday'] ?? ''));
+                                  (isset($data['phone']) && $data['phone'] !== ($existingUser['phone'] ?? '')) ||
+                                  ($status !== ($existingUser['status'] ?? '')) ||
+                                  (isset($data['role']) && $data['role'] !== ($existingUser['role'] ?? '')) ||
+                                  ($birthday !== ($existingUser['birthday'] ?? ''));
                                   
                     if ($needsUpdate) {
                         try {
                             // Prepare update data
                             $updateData = [
                                 // Include all fields that might have changed
-                                'phone' => $data['phone'] ?? $existingUser['phone'],
-                                'status' => $data['status'] ?? $existingUser['status'],
-                                'role' => $data['role'] ?? $existingUser['role'],
-                                'birthday' => $data['birthday'] ?? $existingUser['birthday'],
+                                'phone' => isset($data['phone']) ? $data['phone'] : ($existingUser['phone'] ?? null),
+                                'status' => $status,
+                                'role' => isset($data['role']) ? $data['role'] : ($existingUser['role'] ?? null),
+                                'birthday' => $birthday,
                             ];
                             
-                            // If address changed, add it to update data
+                            // TEMPORARILY DISABLED: Use regular update instead of geocoding during CSV import
+                            // TODO: Re-enable geocoding with background processing
                             if (!empty($data['address']) && ($data['address'] !== ($existingUser['address'] ?? ''))) {
                                 $updateData['address'] = $data['address'];
-                                $userModel->updateWithGeocoding($existingUser['id'], $updateData);
-                                error_log("CSV Import: Updated address with geocoding for user ID {$existingUser['id']}");
+                                $userModel->update($existingUser['id'], $updateData); // Changed from updateWithGeocoding
+                                error_log("CSV Import: Updated address (geocoding disabled) for user ID {$existingUser['id']}");
                             } else {
                                 // Use regular update without geocoding if address didn't change
                                 $userModel->update($existingUser['id'], $updateData);
@@ -611,6 +894,120 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     continue; // Skip to next user
                 }
                 
+                error_log("CSV Import: User with email '{$data['email']}' doesn't exist - will create new user");
+                
+                // Determine status based on LOA date or Title
+                $status = 'assignable'; // Default status
+                
+                // Check for LOA date in the LOA column
+                if (isset($data['loa']) && !empty($data['loa'])) {
+                    // If there's any non-empty value in the LOA column, set status to LOA
+                    // This handles various formats including dates and special values
+                    if (trim($data['loa']) !== '') {
+                        $status = 'loa';
+                        error_log("CSV Import: Setting status to LOA for user {$data['email']} based on LOA value {$data['loa']}");
+                    }
+                }
+                
+                // Check if Title column contains Booster
+                if (isset($data['title']) && stripos($data['title'], 'booster') !== false) {
+                    $status = 'booster';
+                    error_log("CSV Import: Setting status to booster for user {$data['email']} based on Title {$data['title']}");
+                }
+                
+                // Check if explicit status is provided
+                if (isset($data['status']) && !empty($data['status'])) {
+                    $status = strtolower($data['status']);
+                }
+                
+                // Handle birthday field - extract MM/DD from B'day column if available
+                $birthday = null;
+                if (isset($data['b\'day']) && !empty($data['b\'day'])) {
+                    error_log("CSV Import: Processing birthday field: '{$data['b\'day']}'");
+                    
+                    // Skip special formats like "6/x"
+                    if (strpos($data['b\'day'], 'x') !== false) {
+                        error_log("CSV Import: Skipping special birthday format {$data['b\'day']}");
+                    }
+                    // Try to extract MM/DD format using simple string operations
+                    else if (strpos($data['b\'day'], '/') !== false) {
+                        $dateParts = explode('/', $data['b\'day']);
+                        if (count($dateParts) >= 2) {
+                            $month = str_pad($dateParts[0], 2, '0', STR_PAD_LEFT);
+                            $day = str_pad($dateParts[1], 2, '0', STR_PAD_LEFT);
+                            $birthday = sprintf("%s/%s", $month, $day);
+                            error_log("CSV Import: Extracted birthday {$birthday} from B'day field {$data['b\'day']}");
+                        } else {
+                            error_log("CSV Import: Could not parse birthday parts from {$data['b\'day']}");
+                        }
+                    } else {
+                        // Handle numeric only formats like "12" or "1225" (Dec 25)
+                        $cleanDate = preg_replace('/[^0-9]/', '', $data['b\'day']);
+                        if (strlen($cleanDate) == 1 || strlen($cleanDate) == 2) {
+                            // Just month, assume day 1
+                            $month = str_pad($cleanDate, 2, '0', STR_PAD_LEFT);
+                            $birthday = sprintf("%s/01", $month);
+                            error_log("CSV Import: Extracted month-only birthday {$birthday} from {$data['b\'day']}");
+                        } else if (strlen($cleanDate) == 3 || strlen($cleanDate) == 4) {
+                            // Format like 1225 (Dec 25)
+                            if (strlen($cleanDate) == 3) {
+                                $month = str_pad(substr($cleanDate, 0, 1), 2, '0', STR_PAD_LEFT);
+                                $day = str_pad(substr($cleanDate, 1, 2), 2, '0', STR_PAD_LEFT);
+                            } else {
+                                $month = str_pad(substr($cleanDate, 0, 2), 2, '0', STR_PAD_LEFT);
+                                $day = str_pad(substr($cleanDate, 2, 2), 2, '0', STR_PAD_LEFT);
+                            }
+                            if ($month > 0 && $month <= 12 && $day > 0 && $day <= 31) {
+                                $birthday = sprintf("%s/%s", $month, $day);
+                                error_log("CSV Import: Extracted numeric birthday {$birthday} from {$data['b\'day']}");
+                            }
+                        }
+                    }
+                } elseif (isset($data['birthday']) && !empty($data['birthday'])) {
+                    // If we have a birthday field, process it similarly
+                    error_log("CSV Import: Processing 'birthday' field: '{$data['birthday']}'");
+                    
+                    if (strpos($data['birthday'], 'x') !== false) {
+                        error_log("CSV Import: Skipping special birthday format {$data['birthday']}");
+                    }
+                    else if (strpos($data['birthday'], '/') !== false) {
+                        $dateParts = explode('/', $data['birthday']);
+                        if (count($dateParts) >= 2) {
+                            $month = str_pad($dateParts[0], 2, '0', STR_PAD_LEFT);
+                            $day = str_pad($dateParts[1], 2, '0', STR_PAD_LEFT);
+                            $birthday = sprintf("%s/%s", $month, $day);
+                            error_log("CSV Import: Extracted birthday {$birthday} from birthday field {$data['birthday']}");
+                        } else {
+                            error_log("CSV Import: Could not parse birthday parts from {$data['birthday']}");
+                        }
+                    } else {
+                        // Handle numeric only formats like "12" or "1225" (Dec 25)
+                        $cleanDate = preg_replace('/[^0-9]/', '', $data['birthday']);
+                        if (strlen($cleanDate) == 1 || strlen($cleanDate) == 2) {
+                            // Just month, assume day 1
+                            $month = str_pad($cleanDate, 2, '0', STR_PAD_LEFT);
+                            $birthday = sprintf("%s/01", $month);
+                            error_log("CSV Import: Extracted month-only birthday {$birthday} from {$data['birthday']}");
+                        } else if (strlen($cleanDate) == 3 || strlen($cleanDate) == 4) {
+                            // Format like 1225 (Dec 25)
+                            if (strlen($cleanDate) == 3) {
+                                $month = str_pad(substr($cleanDate, 0, 1), 2, '0', STR_PAD_LEFT);
+                                $day = str_pad(substr($cleanDate, 1, 2), 2, '0', STR_PAD_LEFT);
+                            } else {
+                                $month = str_pad(substr($cleanDate, 0, 2), 2, '0', STR_PAD_LEFT);
+                                $day = str_pad(substr($cleanDate, 2, 2), 2, '0', STR_PAD_LEFT);
+                            }
+                            if ($month > 0 && $month <= 12 && $day > 0 && $day <= 31) {
+                                $birthday = sprintf("%s/%s", $month, $day);
+                                error_log("CSV Import: Extracted numeric birthday {$birthday} from {$data['birthday']}");
+                            }
+                        } else {
+                            $birthday = $data['birthday'];
+                            error_log("CSV Import: Using birthday value as-is: {$birthday}");
+                        }
+                    }
+                }
+                
                 // Prepare user data without partner/friend relations initially
                 $userData = [
                     'email' => $data['email'],
@@ -618,13 +1015,15 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                     'last_name' => $data['last_name'],
                     'phone' => $data['phone'] ?? '',
                     'address' => $data['address'] ?? '',
-                    'status' => $data['status'] ?? 'assignable',
+                    'status' => $status,
                     'role' => $data['role'] ?? 'member',
-                    'is_admin' => (strtolower($data['role'] ?? '') === 'admin') ? 1 : 0,
-                    'birthday' => $data['birthday'] ?? null
+                    'is_admin' => (isset($data['role']) && strtolower($data['role']) === 'admin') ? 1 : 0,
+                    'birthday' => $birthday
                 ];
                 
-                // Geocode address if provided
+                // TEMPORARILY DISABLED: Geocode address if provided - causes performance issues on large imports
+                // TODO: Re-enable geocoding with background processing or batch operations
+                /*
                 if (!empty($userData['address'])) {
                     try {
                         $geocodingService = new GeocodingService();
@@ -640,10 +1039,19 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
                         error_log("CSV Import: Geocoding failed for new user: " . $e->getMessage());
                     }
                 }
+                */
 
                 // Create user first
-                $newUser = $userModel->create($userData);
-                $importCount++;
+                error_log("CSV Import: Creating new user with data: " . json_encode($userData));
+                try {
+                    $newUser = $userModel->create($userData);
+                    error_log("CSV Import: Successfully created user ID: " . ($newUser['id'] ?? 'unknown'));
+                    $importCount++;
+                } catch (\Exception $e) {
+                    error_log("CSV Import: Failed to create user: " . $e->getMessage());
+                    $errors[] = "Row " . ($i + 1) . ": Failed to create user - " . $e->getMessage();
+                    continue;
+                }
                 
                 // Store relationship info for second pass
                 if (!empty($data['partner_first_name']) || !empty($data['partner_last_name']) || 
@@ -677,11 +1085,25 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
             // Process partner relationship
             if (!empty($relationship['partner_first_name']) && !empty($relationship['partner_last_name'])) {
                 try {
-                    // Search for partner by name
+                    // Search for partner by name - be more flexible with the search
+                    // We'll try both exact match and more flexible match
                     $sql = "SELECT id FROM users WHERE first_name = ? AND last_name = ? LIMIT 1";
                     $stmt = $userModel->getDb()->prepare($sql);
                     $stmt->execute([$relationship['partner_first_name'], $relationship['partner_last_name']]);
                     $partnerId = $stmt->fetchColumn();
+                    
+                    // If not found, try a more flexible search
+                    if (!$partnerId) {
+                        // Try a LIKE search for first and last name
+                        $sql = "SELECT id FROM users WHERE first_name LIKE ? AND last_name LIKE ? LIMIT 1";
+                        $stmt = $userModel->getDb()->prepare($sql);
+                        $stmt->execute(['%' . $relationship['partner_first_name'] . '%', '%' . $relationship['partner_last_name'] . '%']);
+                        $partnerId = $stmt->fetchColumn();
+                        
+                        if ($partnerId) {
+                            error_log("CSV Import: Found partner ID {$partnerId} using flexible name match for {$relationship['partner_first_name']} {$relationship['partner_last_name']}");
+                        }
+                    }
                     
                     if ($partnerId) {
                         $updateData['partner_id'] = $partnerId;
@@ -700,11 +1122,25 @@ $app->post('/api/users/import', function (Request $request, Response $response) 
             // Process friend relationship
             if (!empty($relationship['friend_first_name']) && !empty($relationship['friend_last_name'])) {
                 try {
-                    // Search for friend by name
+                    // Search for friend by name - be more flexible with the search
+                    // We'll try both exact match and more flexible match
                     $sql = "SELECT id FROM users WHERE first_name = ? AND last_name = ? LIMIT 1";
                     $stmt = $userModel->getDb()->prepare($sql);
                     $stmt->execute([$relationship['friend_first_name'], $relationship['friend_last_name']]);
                     $friendId = $stmt->fetchColumn();
+                    
+                    // If not found, try a more flexible search
+                    if (!$friendId) {
+                        // Try a LIKE search for first and last name
+                        $sql = "SELECT id FROM users WHERE first_name LIKE ? AND last_name LIKE ? LIMIT 1";
+                        $stmt = $userModel->getDb()->prepare($sql);
+                        $stmt->execute(['%' . $relationship['friend_first_name'] . '%', '%' . $relationship['friend_last_name'] . '%']);
+                        $friendId = $stmt->fetchColumn();
+                        
+                        if ($friendId) {
+                            error_log("CSV Import: Found friend ID {$friendId} using flexible name match for {$relationship['friend_first_name']} {$relationship['friend_last_name']}");
+                        }
+                    }
                     
                     if ($friendId) {
                         $updateData['friend_id'] = $friendId;
