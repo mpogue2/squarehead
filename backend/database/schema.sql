@@ -19,6 +19,11 @@ CREATE TABLE users (
     friend_id INT NULL,
     status ENUM('exempt', 'assignable', 'booster', 'loa') DEFAULT 'assignable',
     is_admin BOOLEAN DEFAULT FALSE,
+    birthday VARCHAR(10) NULL,
+    notes TEXT NULL,
+    latitude DECIMAL(10, 8) NULL,
+    longitude DECIMAL(11, 8) NULL,
+    geocoded_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     

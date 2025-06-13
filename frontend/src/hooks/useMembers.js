@@ -804,25 +804,30 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
     onSuccess: (response) => {
       queryClient.invalidateQueries(['members'])
       console.log('Import CSV response:', response);
+      console.log('Import CSV response type:', typeof response);
+      console.log('Import CSV response keys:', Object.keys(response || {}));
       
-      // For our fetch implementation, the data is directly available or in response.data
-      let result = response;
-      if (response.data) {
-        // Handle both formats - the fetch API response is wrapped to match axios format
-        // response.data could be the response or could contain a data property
-        result = response.data.data || response.data;
-      }
+      // Pass the entire response to the callback
+      // Let the UI components handle the different response formats
+      console.log('Import CSV raw response:', response);
       
       // If callback provided, use it (for modal display)
+      // Pass the complete response object to allow handling different formats
       if (onImportResults) {
-        onImportResults(result)
+        onImportResults(response)
         return
       }
       
-      // Fallback to toast notifications
-      const imported = result.imported || 0
-      const skipped = result.skipped || 0
-      const errors = result.errors || []
+      // Extract statistics for toast notifications, handling both formats
+      // This could be data.data (nested API response), data (first level), or direct properties
+      const stats = response?.data?.data || response?.data || response || {};
+      console.log('Extracted import statistics for notifications:', stats);
+      
+      const imported = stats.imported || 0
+      const skipped = stats.skipped || 0
+      const errors = stats.errors || []
+      
+      console.log('Parsed values:', { imported, skipped, errors });
       
       let message = `Import completed: ${imported} members imported`
       if (skipped > 0) {

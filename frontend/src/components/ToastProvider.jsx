@@ -44,8 +44,11 @@ export const ToastProvider = ({ children }) => {
   const success = useCallback((message, options) => 
     addToast(message, 'success', options), [addToast])
   
-  const error = useCallback((message, options) => 
-    addToast(message, 'error', options), [addToast])
+  const error = useCallback((message, options = {}) => {
+    // Double the default delay for error messages (10 seconds instead of 5)
+    const errorOptions = { ...options, delay: options.delay || 10000 };
+    return addToast(message, 'error', errorOptions);
+  }, [addToast])
   
   const warning = useCallback((message, options) => 
     addToast(message, 'warning', options), [addToast])

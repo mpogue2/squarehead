@@ -57,7 +57,7 @@ const MemberEditModal = ({ show, onHide }) => {
         friend_id: selectedMember.friend_id || '',
         status: selectedMember.status || 'assignable',
         is_admin: selectedMember.is_admin || false,
-        birthday: selectedMember.birthday || ''
+        birthday: selectedMember.birthday ? selectedMember.birthday.replace(/-/g, '/') : ''
       })
     } else {
       // Reset form for new member
@@ -323,8 +323,9 @@ const MemberEditModal = ({ show, onHide }) => {
                   value={formData.birthday}
                   onChange={(e) => handleInputChange('birthday', e.target.value)}
                   isInvalid={!!errors.birthday}
-                  placeholder="Enter birthday (e.g., 01/15)"
+                  placeholder="MM/DD (e.g., 01/15)"
                   maxLength={5}
+                  pattern="(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])"
                 />
                 <Form.Control.Feedback type="invalid">
                   {errors.birthday}

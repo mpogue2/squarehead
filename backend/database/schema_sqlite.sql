@@ -16,6 +16,11 @@ CREATE TABLE users (
     friend_id INTEGER,
     status TEXT DEFAULT 'assignable' CHECK (status IN ('exempt', 'assignable', 'booster', 'loa')),
     is_admin INTEGER DEFAULT 0,
+    birthday TEXT,
+    notes TEXT,
+    latitude REAL,
+    longitude REAL,
+    geocoded_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
