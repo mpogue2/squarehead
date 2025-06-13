@@ -48,25 +48,215 @@ $app->get('/api/users/coordinates', function (Request $request, Response $respon
 // POST /api/users/geocode-all - Geocode all users missing coordinates (admin only)
 // NOTE: This must come BEFORE /api/users/{id} to avoid route conflicts
 $app->post('/api/users/geocode-all', function (Request $request, Response $response) {
+    // Create a progress tracker instance
+    $progressTracker = new \App\Services\ProgressTracker('geocoding');
+    
+    // Start fresh with each new geocoding request
+    $progressTracker->reset();
+    
+    error_log("Starting geocode-all operation");
+    
+    // For counting only requests, just return the total without geocoding
+    $data = $request->getParsedBody() ?: [];
+    $countOnly = isset($data['count_only']) && $data['count_only'] === true;
     try {
+        error_log("Geocode All Addresses endpoint called");
+        
         $isAdmin = $request->getAttribute('is_admin');
         
         if (!$isAdmin) {
+            error_log("Geocode All Addresses: Access denied - admin required");
             return ApiResponse::error($response, 'Admin access required to geocode addresses', 403);
         }
         
-        $userModel = new User();
-        $results = $userModel->geocodeAllMissingCoordinates();
+        // First, verify Google API key is set
+        $db = \App\Database::getConnection();
+        $stmt = $db->prepare("SELECT setting_value FROM settings WHERE setting_key = 'google_api_key'");
+        $stmt->execute();
+        $apiKey = $stmt->fetchColumn();
         
-        $message = "Geocoding completed: {$results['geocoded']} addresses geocoded";
-        if (!empty($results['errors'])) {
-            $message .= ', ' . count($results['errors']) . ' errors occurred';
+        if (!$apiKey) {
+            error_log("Geocode All Addresses: Missing Google Maps API key");
+            return ApiResponse::error($response, 'Google Maps API key not configured in settings', 400);
         }
         
-        return ApiResponse::success($response, $results, $message);
+        error_log("Geocode All Addresses: Starting geocoding process");
+        
+        // Find users that need geocoding - use a prepared statement for better SQLite compatibility
+        $findSql = "SELECT id, address FROM users WHERE address IS NOT NULL 
+                   AND address <> '' AND address <> 'Web Host' AND LENGTH(address) > 10
+                   AND (latitude IS NULL OR longitude IS NULL)";
+        $findStmt = $db->query($findSql);
+        $usersToGeocode = $findStmt->fetchAll();
+        
+        $totalUsers = count($usersToGeocode);
+        error_log("Geocode All Addresses: Found {$totalUsers} users that need geocoding");
+        
+        // Initialize progress tracking with our file-based tracker
+        $progressTracker->initialize($totalUsers);
+        
+        error_log("Progress tracking initialized with {$totalUsers} users to geocode");
+        
+        // If no users need geocoding, return early
+        if ($totalUsers === 0) {
+            error_log("No users need geocoding, returning early");
+            return ApiResponse::success($response, [
+                'geocoded' => 0,
+                'total' => 0,
+                'errors' => []
+            ], "No valid addresses found that need geocoding");
+        }
+        
+        // If this is just a count request, return now
+        if ($countOnly) {
+            return ApiResponse::success($response, [
+                'geocoded' => 0,
+                'total' => $totalUsers,
+                'errors' => []
+            ], "Found {$totalUsers} addresses that need geocoding");
+        }
+        
+        // Create geocoding service
+        $geocodingService = new GeocodingService();
+        
+        // Track results
+        $geocoded = 0;
+        $errors = [];
+        
+        // Get batch size from settings, default to 5 if not set
+        $settingsModel = new \App\Models\Settings();
+        $batchSize = (int)$settingsModel->get('geocoding_batch_size') ?: 5;
+        error_log("Geocode All Addresses: Using batch size {$batchSize} from settings");
+        
+        $totalBatches = ceil(count($usersToGeocode) / $batchSize);
+        $batchCount = 0;
+        
+        // Prepare arrays for batch processing
+        $addressBatches = array_chunk($usersToGeocode, $batchSize);
+        
+        foreach ($addressBatches as $batch) {
+            $batchCount++;
+            error_log("Geocode All Addresses: Processing batch {$batchCount} of {$totalBatches}");
+            
+            // Format addresses for batch geocoding
+            $addresses = [];
+            foreach ($batch as $user) {
+                $addresses[] = [
+                    'id' => $user['id'],
+                    'address' => $user['address']
+                ];
+            }
+            
+            // Geocode the batch
+            $results = $geocodingService->geocodeAddressBatch($addresses);
+            
+            // Process results
+            foreach ($results as $result) {
+                if (isset($result['error'])) {
+                    $errorMsg = $result['error'];
+                    error_log("Geocode All Addresses: Error for user ID {$result['id']}: {$errorMsg}");
+                    $errors[] = "User ID {$result['id']}: {$errorMsg}";
+                } else {
+                    // Update user with coordinates
+                    $updateSql = "UPDATE users SET latitude = ?, longitude = ?, geocoded_at = ? WHERE id = ?";
+                    $updateStmt = $db->prepare($updateSql);
+                    $updateStmt->execute([$result['lat'], $result['lng'], date('Y-m-d H:i:s'), $result['id']]);
+                    
+                    error_log("Geocode All Addresses: Successfully geocoded user ID {$result['id']}");
+                    $geocoded++;
+                    // Update progress using our file-based tracker
+                    $progressTracker->increment();
+                    error_log("Updated progress: {$geocoded} of {$totalUsers} completed");
+                }
+            }
+            
+            // For batches with many addresses, add a small delay between batches
+            if ($totalBatches > 1 && $batchCount < $totalBatches) {
+                usleep(500000); // 0.5 second delay between batches
+            }
+        }
+        
+        // Prepare response message
+        if ($geocoded > 0) {
+            $message = "Geocoding completed: {$geocoded} addresses geocoded";
+            if (!empty($errors)) {
+                $message .= ', ' . count($errors) . ' errors occurred';
+            }
+        } else {
+            $message = "Geocoding failed: " . count($errors) . " errors occurred";
+        }
+        
+        error_log("Geocode All Addresses: {$message}");
+        
+        // Final update to progress tracking
+        $progressTracker->update($geocoded, $totalUsers, 'completed');
+        error_log("FINAL progress update: {$geocoded} of {$totalUsers} completed");
+        
+        return ApiResponse::success($response, [
+            'geocoded' => $geocoded,
+            'total' => $totalUsers,  // Include total count for progress tracking
+            'errors' => $errors
+        ], $message);
         
     } catch (Exception $e) {
-        return ApiResponse::error($response, 'Failed to geocode addresses: ' . $e->getMessage(), 500);
+        $errorMsg = 'Failed to geocode addresses: ' . $e->getMessage();
+        error_log("Geocode All Addresses ERROR: {$errorMsg}");
+        error_log("Exception details: " . print_r($e, true));
+        return ApiResponse::error($response, $errorMsg, 500);
+    }
+})->add(new AuthMiddleware());
+
+// GET /api/users/geocode-progress - Get current geocoding progress (protected)
+$app->get('/api/users/geocode-progress', function (Request $request, Response $response) {
+    // Use our file-based tracker
+    $progressTracker = new \App\Services\ProgressTracker('geocoding');
+    
+    try {
+        // Get the current progress
+        $progress = $progressTracker->getProgress();
+        
+        error_log("Geocode progress request - Using file-based tracker");
+        
+        // If no progress data exists, do a quick count of users that need geocoding
+        if (!$progress) {
+            error_log("No progress data found, creating initial progress info");
+            
+            // Count users that need geocoding
+            $db = \App\Database::getConnection();
+            $findSql = "SELECT COUNT(*) FROM users WHERE address IS NOT NULL 
+                       AND address <> '' AND address <> 'Web Host' AND LENGTH(address) > 10
+                       AND (latitude IS NULL OR longitude IS NULL)";
+            $findStmt = $db->query($findSql);
+            $usersToGeocode = (int)$findStmt->fetchColumn();
+            
+            error_log("Found {$usersToGeocode} users that need geocoding");
+            
+            // Create initial progress data
+            $progress = [
+                'operation' => 'geocoding',
+                'total' => $usersToGeocode,
+                'completed' => 0,
+                'timestamp' => time(),
+                'status' => 'pending'
+            ];
+            
+            // No need to save this to a file since we're not actively geocoding
+        }
+        
+        $responseData = [
+            'completed' => (int)($progress['completed'] ?? 0),
+            'total' => (int)($progress['total'] ?? 0),
+            'timestamp' => (int)($progress['timestamp'] ?? time()),
+            'status' => $progress['status'] ?? 'pending',
+            'is_stale' => ($progress['status'] ?? '') === 'stale'
+        ];
+        
+        error_log("Geocoding progress response: " . json_encode($responseData));
+        
+        return ApiResponse::success($response, $responseData);
+    } catch (Exception $e) {
+        error_log("Error in geocode-progress endpoint: " . $e->getMessage());
+        return ApiResponse::error($response, 'Failed to get geocoding progress: ' . $e->getMessage(), 500);
     }
 })->add(new AuthMiddleware());
 

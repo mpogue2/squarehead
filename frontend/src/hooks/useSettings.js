@@ -24,7 +24,14 @@ export const useSettings = () => {
 
 // Hook for updating settings
 export const useUpdateSettings = () => {
-  const queryClient = useQueryClient()
+  // Safe initialization of queryClient
+  let queryClient = null;
+  try {
+    queryClient = useQueryClient();
+  } catch (e) {
+    console.error('Error initializing queryClient in useUpdateSettings:', e);
+  }
+  
   const updateSettings = useSettingsStore((state) => state.updateSettings)
   const markClean = useSettingsStore((state) => state.markClean)
   const { success, error } = useToast()
@@ -39,7 +46,9 @@ export const useUpdateSettings = () => {
       const settings = data.data || data
       updateSettings(settings)
       markClean()
-      queryClient.invalidateQueries(['settings'])
+      if (queryClient) {
+        queryClient.invalidateQueries(['settings'])
+      }
       success('Settings updated successfully!')
     },
     onError: (err) => {
@@ -62,7 +71,14 @@ export const useUpdateSettings = () => {
 
 // Hook for updating a single setting
 export const useUpdateSetting = () => {
-  const queryClient = useQueryClient()
+  // Safe initialization of queryClient
+  let queryClient = null;
+  try {
+    queryClient = useQueryClient();
+  } catch (e) {
+    console.error('Error initializing queryClient in useUpdateSetting:', e);
+  }
+  
   const updateSetting = useSettingsStore((state) => state.updateSetting)
   const { success, error } = useToast()
   
@@ -70,7 +86,9 @@ export const useUpdateSetting = () => {
     mutationFn: ({ key, value }) => apiService.updateSetting(key, value),
     onSuccess: (data, variables) => {
       updateSetting(variables.key, variables.value)
-      queryClient.invalidateQueries(['settings'])
+      if (queryClient) {
+        queryClient.invalidateQueries(['settings'])
+      }
       success(`${variables.key} updated successfully!`)
     },
     onError: (err) => {

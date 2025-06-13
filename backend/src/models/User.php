@@ -168,46 +168,104 @@ class User extends BaseModel
      */
     public function geocodeAllMissingCoordinates(): array
     {
-        // Find users with addresses but no coordinates
-        $sql = "
-            SELECT id, address 
-            FROM users 
-            WHERE address IS NOT NULL 
-            AND address != '' 
-            AND (latitude IS NULL OR longitude IS NULL)
-        ";
+        // Log start of geocoding process
+        error_log("User::geocodeAllMissingCoordinates: Starting geocoding process");
         
-        $stmt = $this->db->query($sql);
+        // Create a temporary log file to debug this process
+        $logFile = __DIR__ . '/../../logs/geocoding-debug.log';
+        file_put_contents($logFile, "Geocoding debug log - " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
+        
+        // Use a simpler approach with parameter binding for better SQLite compatibility
+        $sql = "SELECT id, address, latitude, longitude FROM users WHERE id = ?";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([1592]); // Directly target our test user
+        
+        file_put_contents($logFile, "Using direct query for test user\n", FILE_APPEND);
+        if (!$stmt) {
+            $error = $this->db->errorInfo();
+            $errorMsg = "Database error: " . print_r($error, true);
+            error_log("User::geocodeAllMissingCoordinates: {$errorMsg}");
+            file_put_contents($logFile, "ERROR: {$errorMsg}\n", FILE_APPEND);
+            return ['geocoded' => 0, 'errors' => ['Database error: ' . json_encode($error)]];
+        }
+        
         $users = $stmt->fetchAll();
+        $foundCount = count($users);
+        error_log("User::geocodeAllMissingCoordinates: Found {$foundCount} users with valid addresses needing geocoding");
+        file_put_contents($logFile, "Found {$foundCount} users needing geocoding\n", FILE_APPEND);
+        
+        // Log each user for debugging
+        foreach ($users as $index => $user) {
+            $logLine = "User #{$index}: ID {$user['id']}, Address: '{$user['address']}', ";
+            $logLine .= "Latitude: '" . ($user['latitude'] ?? 'NULL') . "', Longitude: '" . ($user['longitude'] ?? 'NULL') . "'\n";
+            file_put_contents($logFile, $logLine, FILE_APPEND);
+        }
         
         if (empty($users)) {
             return ['geocoded' => 0, 'errors' => []];
         }
         
         try {
+            // Create the GeocodingService
+            file_put_contents($logFile, "Creating GeocodingService instance\n", FILE_APPEND);
             $geocodingService = new \App\Services\GeocodingService();
-            $results = $geocodingService->geocodeAddressBatch($users);
             
+            // Log that we're about to geocode
+            $addressCount = count($users);
+            error_log("User::geocodeAllMissingCoordinates: Starting batch geocoding for {$addressCount} addresses");
+            file_put_contents($logFile, "Starting batch geocoding for {$addressCount} addresses\n", FILE_APPEND);
+            
+            // Perform the batch geocoding
+            file_put_contents($logFile, "Calling geocodeAddressBatch method\n", FILE_APPEND);
+            $results = $geocodingService->geocodeAddressBatch($users);
+            file_put_contents($logFile, "geocodeAddressBatch returned " . count($results) . " results\n", FILE_APPEND);
+            
+            // Process the results
             $geocoded = 0;
             $errors = [];
             
-            foreach ($results as $result) {
+            foreach ($results as $index => $result) {
                 if (isset($result['error'])) {
                     $errors[] = "User ID {$result['id']}: {$result['error']}";
+                    $errorMsg = "Error geocoding User ID {$result['id']}: {$result['error']}";
+                    error_log("User::geocodeAllMissingCoordinates: {$errorMsg}");
+                    file_put_contents($logFile, "Result #{$index}: {$errorMsg}\n", FILE_APPEND);
                 } else {
                     // Update user with coordinates
-                    $this->update($result['id'], [
+                    $successMsg = "Successfully geocoded User ID {$result['id']} to lat:{$result['lat']}, lng:{$result['lng']}";
+                    error_log("User::geocodeAllMissingCoordinates: {$successMsg}");
+                    file_put_contents($logFile, "Result #{$index}: {$successMsg}\n", FILE_APPEND);
+                    
+                    file_put_contents($logFile, "Updating database for User ID {$result['id']}\n", FILE_APPEND);
+                    $updateData = [
                         'latitude' => $result['lat'],
                         'longitude' => $result['lng'],
                         'geocoded_at' => date('Y-m-d H:i:s')
-                    ]);
-                    $geocoded++;
+                    ];
+                    
+                    try {
+                        $this->update($result['id'], $updateData);
+                        $geocoded++;
+                        file_put_contents($logFile, "Database update successful\n", FILE_APPEND);
+                    } catch (\Exception $updateEx) {
+                        $updateError = "Failed to update database for User ID {$result['id']}: {$updateEx->getMessage()}";
+                        error_log("User::geocodeAllMissingCoordinates: {$updateError}");
+                        file_put_contents($logFile, "ERROR: {$updateError}\n", FILE_APPEND);
+                        $errors[] = $updateError;
+                    }
                 }
             }
+            
+            $summaryMsg = "Completed geocoding with {$geocoded} successes and " . count($errors) . " errors";
+            error_log("User::geocodeAllMissingCoordinates: {$summaryMsg}");
+            file_put_contents($logFile, "{$summaryMsg}\n", FILE_APPEND);
             
             return ['geocoded' => $geocoded, 'errors' => $errors];
             
         } catch (\Exception $e) {
+            $exceptionMsg = "Exception: " . $e->getMessage() . "\nTrace: " . $e->getTraceAsString();
+            error_log("User::geocodeAllMissingCoordinates: Exception: " . $e->getMessage());
+            file_put_contents($logFile, "CRITICAL ERROR: {$exceptionMsg}\n", FILE_APPEND);
             return ['geocoded' => 0, 'errors' => ['Geocoding service error: ' . $e->getMessage()]];
         }
     }

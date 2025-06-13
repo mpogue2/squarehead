@@ -35,22 +35,31 @@ class GeocodingService
     public function geocodeAddress(string $address): ?array
     {
         if (empty(trim($address))) {
+            error_log("GeocodingService::geocodeAddress: Empty address provided");
             return null;
         }
+        
+        // Skip placeholder values
+        if (trim($address) === 'Web Host' || strlen(trim($address)) < 10) {
+            error_log("GeocodingService::geocodeAddress: Skipping invalid address: '{$address}'");
+            return null;
+        }
+        
+        error_log("GeocodingService::geocodeAddress: Geocoding address: '{$address}'");
         
         $url = $this->baseUrl . '?' . http_build_query([
             'address' => $address,
             'key' => $this->apiKey
         ]);
         
-        // Initialize cURL
+        // Initialize cURL with longer timeout
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 10,
+            CURLOPT_TIMEOUT => 30, // Increased timeout to 30 seconds
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_SSL_VERIFYPEER => false, // For development
+            CURLOPT_SSL_VERIFYPEER => true, // Enable SSL verification for security
             CURLOPT_USERAGENT => 'Square Dance Club Management System/1.0'
         ]);
         
@@ -60,22 +69,40 @@ class GeocodingService
         curl_close($ch);
         
         if ($response === false || !empty($error)) {
-            throw new Exception("Geocoding API request failed: " . $error);
+            $errorMessage = "Geocoding API request failed: " . $error;
+            error_log("GeocodingService::geocodeAddress: {$errorMessage}");
+            throw new Exception($errorMessage);
         }
         
         if ($httpCode !== 200) {
-            throw new Exception("Geocoding API returned HTTP {$httpCode}");
+            $errorMessage = "Geocoding API returned HTTP {$httpCode}";
+            error_log("GeocodingService::geocodeAddress: {$errorMessage}");
+            throw new Exception($errorMessage);
         }
         
         $data = json_decode($response, true);
         
-        if (!$data || $data['status'] !== 'OK' || empty($data['results'])) {
+        if (!$data) {
+            error_log("GeocodingService::geocodeAddress: Invalid JSON response for address '{$address}'");
+            return null;
+        }
+        
+        if ($data['status'] !== 'OK' || empty($data['results'])) {
             // Log the status for debugging but don't throw exception
-            error_log("Geocoding failed for address '{$address}': " . ($data['status'] ?? 'Unknown error'));
+            error_log("GeocodingService::geocodeAddress: Geocoding failed for address '{$address}': " . ($data['status'] ?? 'Unknown error'));
+            
+            // Log error details if available
+            if (isset($data['error_message'])) {
+                error_log("GeocodingService::geocodeAddress: Error details: " . $data['error_message']);
+            }
+            
             return null;
         }
         
         $location = $data['results'][0]['geometry']['location'];
+        
+        error_log("GeocodingService::geocodeAddress: Successfully geocoded address '{$address}' to coordinates: " . 
+                 json_encode(['lat' => $location['lat'], 'lng' => $location['lng']]));
         
         return [
             'lat' => (float) $location['lat'],
@@ -116,10 +143,26 @@ class GeocodingService
     public function geocodeAddressBatch(array $addresses): array
     {
         $results = [];
+        $count = count($addresses);
         
-        foreach ($addresses as $item) {
+        error_log("GeocodingService::geocodeAddressBatch: Starting batch geocoding for {$count} addresses");
+        
+        foreach ($addresses as $index => $item) {
             $id = $item['id'];
             $address = $item['address'];
+            $progress = ($index + 1) . " of {$count}";
+            
+            error_log("GeocodingService::geocodeAddressBatch: Processing address {$progress} - User ID {$id}: '{$address}'");
+            
+            // Skip empty or invalid addresses
+            if (empty(trim($address)) || trim($address) === 'Web Host' || strlen(trim($address)) < 10) {
+                error_log("GeocodingService::geocodeAddressBatch: Skipping invalid address for User ID {$id}: '{$address}'");
+                $results[] = [
+                    'id' => $id,
+                    'error' => 'Invalid or incomplete address'
+                ];
+                continue;
+            }
             
             try {
                 $coords = $this->geocodeAddress($address);
@@ -129,22 +172,48 @@ class GeocodingService
                         'lat' => $coords['lat'],
                         'lng' => $coords['lng']
                     ];
+                    error_log("GeocodingService::geocodeAddressBatch: Successfully geocoded User ID {$id}");
                 } else {
                     $results[] = [
                         'id' => $id,
                         'error' => 'Could not geocode address'
                     ];
+                    error_log("GeocodingService::geocodeAddressBatch: Failed to geocode User ID {$id} - no coordinates returned");
                 }
             } catch (Exception $e) {
+                $errorMessage = $e->getMessage();
                 $results[] = [
                     'id' => $id,
-                    'error' => $e->getMessage()
+                    'error' => $errorMessage
                 ];
+                error_log("GeocodingService::geocodeAddressBatch: Exception for User ID {$id}: {$errorMessage}");
             }
             
-            // Small delay to avoid hitting API rate limits
-            usleep(100000); // 0.1 second delay
+            // Adaptive rate limiting based on batch size
+            if ($count > 10) {
+                // For larger batches, use a larger delay to avoid rate limits
+                usleep(200000); // 0.2 second delay
+            } else {
+                // For smaller batches, use a smaller delay
+                usleep(100000); // 0.1 second delay
+            }
         }
+        
+        error_log("GeocodingService::geocodeAddressBatch: Completed batch geocoding for {$count} addresses");
+        
+        // Count successes and failures
+        $successCount = 0;
+        $failureCount = 0;
+        
+        foreach ($results as $result) {
+            if (isset($result['error'])) {
+                $failureCount++;
+            } else {
+                $successCount++;
+            }
+        }
+        
+        error_log("GeocodingService::geocodeAddressBatch: Summary - {$successCount} addresses geocoded successfully, {$failureCount} failures");
         
         return $results;
     }

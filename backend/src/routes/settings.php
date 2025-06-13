@@ -99,6 +99,7 @@ $app->put('/api/settings', function (Request $request, Response $response) {
             'smtp_password' => ['type' => 'string', 'required' => false, 'max_length' => 255],
             'system_timezone' => ['type' => 'string', 'required' => false, 'max_length' => 50],
             'max_upload_size' => ['type' => 'string', 'required' => false, 'pattern' => '/^[1-9][0-9]?$|^100$/'],
+            'geocoding_batch_size' => ['type' => 'string', 'required' => false, 'pattern' => '/^[1-9][0-9]?$|^100$/'],
             'backup_enabled' => ['type' => 'string', 'required' => false],
             'backup_frequency' => ['type' => 'string', 'required' => false, 'enum' => ['daily', 'weekly', 'monthly']]
         ];
