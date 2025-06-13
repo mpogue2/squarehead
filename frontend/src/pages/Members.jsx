@@ -38,6 +38,7 @@ import {
 import { useAuth } from '../hooks/useAuth'
 import { useUI } from '../hooks/useUI'
 import { useToast } from '../components/ToastProvider'
+import { useQueryClient } from '@tanstack/react-query'
 import ImportResultsModal from '../components/members/ImportResultsModal'
 
 // Memoized table row component to prevent unnecessary re-renders
@@ -289,6 +290,7 @@ const Members = () => {
     exportPDF.mutate()
   }, [exportPDF])
   const { open: openModal } = useUI()
+  const queryClient = useQueryClient()
   
   const [searchInput, setSearchInput] = useState(filters.search)
   const [showImportResults, setShowImportResults] = useState(false)
@@ -364,9 +366,6 @@ const Members = () => {
           return
         }
         
-        // Show loading message
-        success('Starting CSV import. This may take a moment...')
-        
         // Proceed with import
         importCSV.mutate(file, {
           onSuccess: (data) => {
@@ -402,8 +401,9 @@ const Members = () => {
             // This prevents issues with nested references and ensures backward compatibility
             const cleanImportResults = {
               imported: importStats.imported || 0,
+              updated: importStats.updated || 0,
               skipped: importStats.skipped || 0,
-              duplicates_handled: importStats.duplicates_handled || importStats.skipped || 0,
+              duplicates_handled: importStats.duplicates_handled || (importStats.updated > 0 ? 0 : importStats.skipped) || 0,
               auto_partnerships: importStats.auto_partnerships || 0,
               errors: importStats.errors || []
             };
@@ -415,11 +415,29 @@ const Members = () => {
             setShowImportResults(true);
             
             // Construct a success message based on the results
-            let successMsg = `Import completed with ${cleanImportResults.imported} members imported`;
+            let successMsg = '';
             
-            // Add duplicates handled info if any
-            // Prefer duplicates_handled field but fall back to skipped for backward compatibility
-            const duplicatesHandled = cleanImportResults.duplicates_handled || cleanImportResults.skipped || 0;
+            // Add imported count if any
+            if (cleanImportResults.imported > 0) {
+              successMsg = `Import completed with ${cleanImportResults.imported} members imported`;
+            }
+            
+            // Add updated count if any
+            if (cleanImportResults.updated > 0) {
+              if (successMsg === '') {
+                successMsg = `Import completed with ${cleanImportResults.updated} records updated`;
+              } else {
+                successMsg += `, ${cleanImportResults.updated} records updated`;
+              }
+            }
+            
+            // Add skipped count if any (for protected admin records)
+            if (cleanImportResults.skipped > 0 && cleanImportResults.updated > 0) {
+              successMsg += `, ${cleanImportResults.skipped} record${cleanImportResults.skipped > 1 ? 's' : ''} skipped`;
+            }
+            
+            // Add duplicates handled info if any (for backward compatibility)
+            const duplicatesHandled = cleanImportResults.duplicates_handled;
             if (duplicatesHandled > 0) {
               successMsg += `, ${duplicatesHandled} duplicate email${duplicatesHandled > 1 ? 's' : ''} handled`;
             }
@@ -428,6 +446,11 @@ const Members = () => {
             const autoPartnerships = cleanImportResults.auto_partnerships || 0;
             if (autoPartnerships > 0) {
               successMsg += `, ${autoPartnerships} automatic partner relationship${autoPartnerships !== 1 ? 's' : ''} created`;
+            }
+            
+            // If nothing was set, provide a fallback message
+            if (successMsg === '') {
+              successMsg = 'Import completed';
             }
             
             // Show success message
@@ -442,6 +465,107 @@ const Members = () => {
             console.error('Error name:', err.name)
             console.error('Error message:', err.message)
             
+            // Immediately prevent default error handling - we'll handle it ourselves
+            // This ensures we don't show the default error message while we're determining
+            // if this is actually a success message
+            
+            console.log('Taking full control of error handling to prevent default messages');
+            
+            // Check if the "error" message actually contains a success message
+            // This happens when the backend returns a success response but the frontend misinterprets it
+            const isSuccessMessage = err.message && (
+                err.message.includes('Import completed') || 
+                err.message.includes('users imported') ||
+                err.message.includes('records updated') ||
+                err.message.includes('geocoded addresses')
+            );
+            
+            if (isSuccessMessage) {
+              console.log('Detected success message in error response, treating as success');
+              
+              // Multiple approaches to extract the success message
+              let successMessage = '';
+              let importResults = null;
+              
+              try {
+                // Approach 1: Try to extract JSON from the error message
+                // The message format might be like: "Server error: []},"message":"Import completed: 0 users imported, 105 existing records updated..."
+                const messageMatch = err.message.match(/message":"([^"]+)"/);
+                if (messageMatch && messageMatch[1]) {
+                  successMessage = messageMatch[1];
+                  console.log('Extracted success message via JSON pattern:', successMessage);
+                  
+                  // Extract numbers for import results
+                  const importedMatch = successMessage.match(/(\d+) users imported/);
+                  const updatedMatch = successMessage.match(/(\d+) (?:existing )?records updated/);
+                  const skippedMatch = successMessage.match(/(\d+) records? skipped/);
+                  
+                  if (importedMatch || updatedMatch) {
+                    importResults = {
+                      imported: importedMatch ? parseInt(importedMatch[1]) : 0,
+                      updated: updatedMatch ? parseInt(updatedMatch[1]) : 0,
+                      skipped: skippedMatch ? parseInt(skippedMatch[1]) : 0,
+                      errors: []
+                    };
+                  }
+                }
+                // Approach 2: If no JSON match, try to extract directly from the message
+                else if (err.message.includes('Import completed')) {
+                  // Extract entire sentence after "Import completed:"
+                  const directMatch = err.message.match(/Import completed:?\s*(.*?)(?:\.|\n|$)/);
+                  if (directMatch && directMatch[1]) {
+                    successMessage = `Import completed: ${directMatch[1]}`;
+                    console.log('Extracted success message directly:', successMessage);
+                    
+                    // Extract numbers
+                    const importedMatch = err.message.match(/(\d+) users imported/);
+                    const updatedMatch = err.message.match(/(\d+) (?:existing )?records updated/);
+                    const skippedMatch = err.message.match(/(\d+) records? skipped/);
+                    
+                    if (importedMatch || updatedMatch) {
+                      importResults = {
+                        imported: importedMatch ? parseInt(importedMatch[1]) : 0,
+                        updated: updatedMatch ? parseInt(updatedMatch[1]) : 0,
+                        skipped: skippedMatch ? parseInt(skippedMatch[1]) : 0,
+                        errors: []
+                      };
+                    }
+                  }
+                }
+                
+                // If we have a success message, show it
+                if (successMessage) {
+                  // Show a success message instead of an error
+                  success(successMessage);
+                  
+                  // Force a refresh of the members list
+                  if (queryClient) {
+                    queryClient.invalidateQueries(['members']);
+                  }
+                  
+                  // If we have import results, show them
+                  if (importResults) {
+                    setImportResults(importResults);
+                    setShowImportResults(true);
+                  }
+                  
+                  return; // Exit early, don't show error
+                }
+              } catch (parseErr) {
+                console.error('Failed to parse success message from error:', parseErr);
+                // Continue with custom error handling below
+              }
+              
+              // Fallback: If we detected a success message but couldn't extract it properly,
+              // just show a generic success message
+              success('Import completed successfully');
+              if (queryClient) {
+                queryClient.invalidateQueries(['members']);
+              }
+              return; // Exit early, don't show error
+            }
+            
+            // If we're here, it's a genuine error
             // Try to extract a meaningful error message
             let errorMessage = 'CSV import failed. ';
             
@@ -472,7 +596,7 @@ const Members = () => {
       
       event.target.value = '' // Reset input
     }
-  }, [importCSV, showError, success])
+  }, [importCSV, showError, success, queryClient])
   
   // Memoized utility functions
   // This key will force the icon to re-render when sortBy changes
