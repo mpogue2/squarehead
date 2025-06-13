@@ -560,17 +560,34 @@ const Members = () => {
       <Row className="mb-4">
         <Col lg={6}>
           {/* Search */}
-          <InputGroup>
-            <InputGroup.Text>
-              <FaSearch />
-            </InputGroup.Text>
-            <Form.Control
-              type="text"
-              placeholder="Search members by name, email, phone, address, or birthday..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-            />
-          </InputGroup>
+          <Row>
+            <Col>
+              <InputGroup className="mb-0">
+                <InputGroup.Text>
+                  <FaSearch />
+                </InputGroup.Text>
+                <Form.Control
+                  type="text"
+                  placeholder="Search members by name, email, phone, address, or birthday..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                />
+              </InputGroup>
+            </Col>
+            {searchInput && (
+              <Col xs="auto" className="ps-0">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setSearchInput('')}
+                  title="Clear search"
+                  className="mt-1"
+                >
+                  <FaTimes />
+                </Button>
+              </Col>
+            )}
+          </Row>
         </Col>
         
         <Col lg={3}>
