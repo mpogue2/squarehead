@@ -7,22 +7,26 @@ import {
   Table, 
   Button, 
   Alert, 
-  Spinner 
+  Spinner,
+  Modal
 } from 'react-bootstrap'
-import { FaExclamationTriangle, FaFileImport, FaSync } from 'react-icons/fa'
+import { FaExclamationTriangle, FaFileImport, FaSync, FaTrashAlt } from 'react-icons/fa'
 import { apiService } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../components/ToastProvider'
+import { useClearImportLogs } from '../hooks/useMaintenance'
 
 const ImportLogs = () => {
   const { user } = useAuth()
-  const { error: showError } = useToast()
+  const { success, error: showError } = useToast()
   const [loading, setLoading] = useState(true)
   const [logs, setLogs] = useState([])
   const [skippedUsers, setSkippedUsers] = useState([])
   const [logPath, setLogPath] = useState('')
   const [logsFound, setLogsFound] = useState(false)
   const [error, setError] = useState(null)
+  const [showConfirmClear, setShowConfirmClear] = useState(false)
+  const clearLogsAction = useClearImportLogs()
 
   const fetchLogs = async () => {
     setLoading(true)
@@ -49,6 +53,26 @@ const ImportLogs = () => {
       setError('Failed to retrieve import logs: ' + (err.message || 'Unknown error'))
       showError('Failed to retrieve import logs. Please try again.')
     } finally {
+      setLoading(false)
+    }
+  }
+  
+  const handleClearLogs = () => {
+    setShowConfirmClear(true)
+  }
+  
+  const confirmClearLogs = async () => {
+    try {
+      setLoading(true)
+      await clearLogsAction.mutateAsync()
+      // Refresh the logs after clearing
+      await fetchLogs()
+      success('Import logs cleared successfully')
+    } catch (err) {
+      console.error('Error clearing logs:', err)
+      showError('Failed to clear import logs: ' + (err.message || 'Unknown error'))
+    } finally {
+      setShowConfirmClear(false)
       setLoading(false)
     }
   }
@@ -90,19 +114,30 @@ const ImportLogs = () => {
                 <FaFileImport className="me-2" /> 
                 Skipped Users
               </h5>
-              <Button 
-                variant="outline-primary" 
-                size="sm" 
-                onClick={fetchLogs} 
-                disabled={loading}
-                className="d-flex align-items-center"
-              >
-                {loading ? (
-                  <><Spinner size="sm" className="me-2" /> Refreshing...</>
-                ) : (
-                  <><FaSync className="me-2" /> Refresh</>
-                )}
-              </Button>
+              <div className="d-flex">
+                <Button 
+                  variant="outline-danger" 
+                  size="sm" 
+                  onClick={handleClearLogs} 
+                  disabled={loading || !logsFound || skippedUsers.length === 0}
+                  className="me-2 d-flex align-items-center"
+                >
+                  <FaTrashAlt className="me-2" /> Clear Logs
+                </Button>
+                <Button 
+                  variant="outline-primary" 
+                  size="sm" 
+                  onClick={fetchLogs} 
+                  disabled={loading}
+                  className="d-flex align-items-center"
+                >
+                  {loading ? (
+                    <><Spinner size="sm" className="me-2" /> Refreshing...</>
+                  ) : (
+                    <><FaSync className="me-2" /> Refresh</>
+                  )}
+                </Button>
+              </div>
             </Card.Header>
             <Card.Body>
               {loading ? (
@@ -201,6 +236,36 @@ const ImportLogs = () => {
           </Card>
         </Col>
       </Row>
+      
+      {/* Confirmation Modal for Clearing Logs */}
+      <Modal show={showConfirmClear} onHide={() => setShowConfirmClear(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Confirm Clear Logs</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="warning">
+            <Alert.Heading>Warning!</Alert.Heading>
+            <p>
+              You are about to clear all import logs. This action cannot be undone.
+            </p>
+            <p className="mb-0">
+              Do you want to continue?
+            </p>
+          </Alert>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowConfirmClear(false)}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={confirmClearLogs} disabled={clearLogsAction.isPending}>
+            {clearLogsAction.isPending ? (
+              <><Spinner size="sm" className="me-2" /> Clearing...</>
+            ) : (
+              <>Clear Logs</>
+            )}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Container>
   )
 }

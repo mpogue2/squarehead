@@ -256,6 +256,7 @@ export const apiService = {
 
   // Maintenance endpoints
   getMaintenanceImportLogs: () => api.get('/maintenance/import-logs'),
+  clearMaintenanceImportLogs: () => api.post('/maintenance/clear-import-logs'),
   
   // Settings endpoints
   getSettings: () => api.get('/settings'),

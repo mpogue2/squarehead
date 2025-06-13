@@ -485,6 +485,68 @@ $app->post('/api/maintenance/clear-current-schedule', function (Request $request
     }
 })->add(new AuthMiddleware());
 
+// POST /api/maintenance/clear-import-logs - Clear import logs (admin only)
+$app->post('/api/maintenance/clear-import-logs', function (Request $request, Response $response) {
+    try {
+        $isAdmin = $request->getAttribute('is_admin');
+        
+        if (!$isAdmin) {
+            return ApiResponse::error($response, 'Admin access required to clear logs', 403);
+        }
+        
+        // Hard-code the application's own log file path to ensure it exists
+        $errorLogPath = __DIR__ . '/../../logs/app.log';
+        
+        // Ensure the log file and directory exist
+        if (!file_exists($errorLogPath)) {
+            // Create directory if it doesn't exist
+            $logDir = dirname($errorLogPath);
+            if (!is_dir($logDir)) {
+                mkdir($logDir, 0755, true);
+            }
+            
+            // Create empty log file
+            touch($errorLogPath);
+            error_log("Created new log file at: $errorLogPath");
+            
+            return ApiResponse::success($response, [
+                'cleared' => false,
+                'reason' => 'Log file did not exist, created new empty file'
+            ], 'Log file did not exist. Created new empty file.');
+        }
+        
+        // Make sure we have write permissions on the log file
+        if (!is_writable($errorLogPath)) {
+            chmod($errorLogPath, 0666); // Make writable by all
+            error_log("Changed permissions on log file: $errorLogPath");
+            
+            if (!is_writable($errorLogPath)) {
+                return ApiResponse::error($response, 'Cannot write to log file. Permission denied.', 500);
+            }
+        }
+        
+        // Get the file size before clearing
+        $beforeSize = filesize($errorLogPath);
+        
+        // Clear the log file by opening it in write mode, which truncates it
+        file_put_contents($errorLogPath, "--- Logs cleared by admin on " . date('Y-m-d H:i:s') . " ---\n");
+        
+        // Get the file size after clearing
+        $afterSize = filesize($errorLogPath);
+        
+        return ApiResponse::success($response, [
+            'cleared' => true,
+            'before_size' => $beforeSize,
+            'after_size' => $afterSize,
+            'time' => date('Y-m-d H:i:s')
+        ], 'Import logs cleared successfully');
+        
+    } catch (\Exception $e) {
+        error_log("Exception in clear-import-logs: " . $e->getMessage());
+        return ApiResponse::error($response, 'Failed to clear import logs: ' . $e->getMessage(), 500);
+    }
+})->add(new AuthMiddleware());
+
 // GET /api/maintenance/import-logs - Get recent import logs (admin only)
 $app->get('/api/maintenance/import-logs', function (Request $request, Response $response) {
     try {
