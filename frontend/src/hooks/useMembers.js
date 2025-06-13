@@ -460,7 +460,7 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
         // Page dimensions (landscape format)
         const pageWidth = 11
         const pageHeight = 8.5
-        const margin = 0.5
+        const margin = 0.25 // Reduced margins by half
         const usableWidth = pageWidth - (margin * 2)
         
         // Add club logo if available
@@ -504,7 +504,7 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
         
         // Starting position - lower to accommodate the header with logo
         let y = margin + 1.2
-        const rowHeight = 0.30
+        const rowHeight = 0.225 // Reduced by 25% from 0.30
         
         // Draw header row
         let x = margin
@@ -545,8 +545,10 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
           // Check if we need a new page
           if (y > pageHeight - margin - 0.5) { // Save space for footer
             // Add page footer with page count and privacy message
+            // Add 5 more rows to account for summary section (4 items plus heading)
+            const summaryRows = 5;
             doc.setFontSize(8)
-            doc.text(`Page ${pageCount} of ${Math.ceil(members.length / Math.floor((pageHeight - margin * 2 - 1.2) / rowHeight))}`, margin, pageHeight - 0.3)
+            doc.text(`Page ${pageCount} of ${Math.ceil((members.length + summaryRows) / Math.floor((pageHeight - margin * 2 - 1.2) / rowHeight))}`, margin, pageHeight - 0.3)
             doc.text("Please shred when disposing this roster. If you have corrections please contact the Roster Manager or the President.", pageWidth / 2, pageHeight - 0.3, { align: 'center' })
             
             // Add new page
@@ -633,9 +635,43 @@ export const useMemberImportExport = ({ onImportResults } = {}) => {
           y += rowHeight
         }
         
+        // Calculate statistics for summary section
+        const onTheRosterCount = members.length;
+        const loaCount = members.filter(m => m.status === 'loa').length;
+        const boosterCount = members.filter(m => m.status === 'booster').length;
+        const currentMembersCount = onTheRosterCount - loaCount - boosterCount;
+        
+        // Add summary statistics section at the bottom
+        y += rowHeight * 0.5; // Add some space before the summary
+        
+        // Draw heading for the summary section
+        doc.setFont(undefined, 'bold');
+        doc.text("Summary Statistics:", margin, y + rowHeight / 2);
+        doc.setFont(undefined, 'normal');
+        
+        // Draw summary rows
+        const summaryItems = [
+          { label: "OnTheRoster", value: onTheRosterCount },
+          { label: "Current Members", value: currentMembersCount },
+          { label: "LOA", value: loaCount },
+          { label: "Booster", value: boosterCount }
+        ];
+        
+        summaryItems.forEach((item, i) => {
+          y += rowHeight;
+          
+          // Label under Name column (left-justified)
+          doc.text(item.label, margin + columns[0].width, y + rowHeight / 2);
+          
+          // Value under Phone column (right-justified)
+          const valueText = item.value.toString();
+          const valueWidth = doc.getStringUnitWidth(valueText) * doc.getFontSize() / 72; // Convert to inches
+          doc.text(valueText, margin + columns[0].width - 0.1 - valueWidth, y + rowHeight / 2);
+        });
+        
         // Add footer to the last page with page count and privacy message
         doc.setFontSize(8)
-        const totalPages = Math.ceil(members.length / Math.floor((pageHeight - margin * 2 - 1.2) / rowHeight));
+        const totalPages = Math.ceil((members.length + summaryItems.length + 1) / Math.floor((pageHeight - margin * 2 - 1.2) / rowHeight));
         doc.text(`Page ${pageCount} of ${totalPages}`, margin, pageHeight - 0.3)
         doc.text("Please shred when disposing this roster. If you have corrections please contact the Roster Manager or the President.", pageWidth / 2, pageHeight - 0.3, { align: 'center' })
         
