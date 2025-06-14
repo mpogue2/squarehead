@@ -106,7 +106,7 @@ const NextSchedule = () => {
       if (endDate < startDate) {
         errors.end_date = 'End date must be on or after start date'
       } else if (endDate.getTime() === startDate.getTime()) {
-        warnings.end_date = 'This will create a single-day schedule'
+        warnings.end_date = 'This will add a single dance date (club day validation bypassed)'
       }
       
       // Check if start date is in the past - show warning instead of error
@@ -161,6 +161,15 @@ const NextSchedule = () => {
       if (suggested) {
         handleCreateFormChange('name', suggested)
       }
+    }
+  }
+
+  // Handle start date change for Add Dates modal (auto-set end date if empty)
+  const handleAddDatesStartDateChange = (date) => {
+    handleCreateFormChange('start_date', date)
+    // If end date is not set and we have a start date, set end date to same as start date
+    if (date && !createForm.end_date) {
+      handleCreateFormChange('end_date', date)
     }
   }
 
@@ -346,7 +355,7 @@ const NextSchedule = () => {
                         <Form.Control
                           type="date"
                           value={createForm.start_date}
-                          onChange={(e) => handleStartDateChange(e.target.value)}
+                          onChange={(e) => handleAddDatesStartDateChange(e.target.value)}
                           isInvalid={!!createErrors.start_date}
                         />
                         <Form.Control.Feedback type="invalid">
@@ -797,7 +806,7 @@ const NextSchedule = () => {
                       <Form.Control
                         type="date"
                         value={createForm.start_date}
-                        onChange={(e) => handleStartDateChange(e.target.value)}
+                        onChange={(e) => handleAddDatesStartDateChange(e.target.value)}
                         isInvalid={!!createErrors.start_date}
                       />
                       <Form.Control.Feedback type="invalid">
@@ -844,7 +853,8 @@ const NextSchedule = () => {
                   <strong>Schedule Addition:</strong>
                   <ul className="mb-0 mt-2">
                     <li>New dance dates will be added to the existing "{schedule?.name}" schedule</li>
-                    <li>Dates will be automatically generated based on the club's day of the week</li>
+                    <li>For date ranges: Dates will be automatically generated based on the club's day of the week</li>
+                    <li>For single dates: Any specific date can be added (club day validation bypassed)</li>
                     <li>All new assignments will start as unassigned and can be edited after creation</li>
                     <li>Existing assignments in the schedule will remain unchanged</li>
                   </ul>

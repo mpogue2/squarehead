@@ -89,6 +89,36 @@ class Schedule extends BaseModel
         $current = new \DateTime($startDate);
         $end = new \DateTime($endDate);
         
+        // Special case: If start and end dates are identical, create assignment for that specific date
+        // regardless of club day of week validation
+        if ($startDate === $endDate) {
+            $dateStr = $current->format('Y-m-d');
+            
+            // Determine if this is a fifth week (special club night)
+            $clubNightType = $this->getFifthWeekType($current) ? 'FIFTH WED' : 'NORMAL';
+            
+            // Insert assignment for the specific date
+            $stmt = $this->db->prepare("
+                INSERT INTO schedule_assignments (schedule_id, dance_date, club_night_type)
+                VALUES (?, ?, ?)
+            ");
+            $stmt->execute([$scheduleId, $dateStr, $clubNightType]);
+            
+            $assignmentId = $this->db->lastInsertId();
+            $assignments[] = [
+                'id' => $assignmentId,
+                'schedule_id' => $scheduleId,
+                'dance_date' => $dateStr,
+                'club_night_type' => $clubNightType,
+                'squarehead1_id' => null,
+                'squarehead2_id' => null,
+                'notes' => null
+            ];
+            
+            return $assignments;
+        }
+        
+        // Regular case: Create assignments based on club day of week
         // Get target day of week (0 = Sunday, 1 = Monday, etc.)
         $targetDayOfWeek = $this->getDayOfWeekNumber($dayOfWeek);
         
