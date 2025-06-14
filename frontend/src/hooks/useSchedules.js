@@ -116,8 +116,10 @@ export const useAddDatesToSchedule = () => {
       const response = await api.post('/schedules/next/add-dates', scheduleData)
       return response
     },
-    onSuccess: (data) => {
-      success(`Added ${data.added_count || 0} new dates to schedule successfully`)
+    onSuccess: (response) => {
+      const data = response.data || response
+      const addedCount = data.added_count || 0
+      success(`Added ${addedCount} new dates to schedule successfully`)
       
       // Invalidate and refetch schedule queries
       queryClient.invalidateQueries({ queryKey: ['schedules'] })
