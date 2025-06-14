@@ -34,7 +34,7 @@ const AuthTest = () => {
   }
 
   const testCurrentToken = () => {
-    setToken('7aa7782311ae82251e0b583592235d25f023fa7daf2e5a21dc5a7e8c073f90a4')
+    setToken('YOUR_TEST_TOKEN_HERE')
     setTimeout(() => testTokenValidation(), 100)
   }
 
