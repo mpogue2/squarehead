@@ -108,13 +108,16 @@ const MemberEditModal = ({ show, onHide }) => {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address'
     } else {
-      // Check for duplicate email (exclude current member if editing)
-      const existingMember = allMembers.find(member => 
+      // Check for composite unique constraint violation (first_name + last_name + email)
+      // Allow multiple users to share the same email, but prevent exact duplicates
+      const exactDuplicate = allMembers.find(member => 
+        member.first_name === formData.first_name &&
+        member.last_name === formData.last_name &&
         member.email === formData.email && 
         member.id !== selectedMember?.id
       )
-      if (existingMember) {
-        newErrors.email = 'This email address is already in use'
+      if (exactDuplicate) {
+        newErrors.email = 'A user with this exact name and email combination already exists'
       }
     }    
     // Phone validation (optional but if provided, should be valid)

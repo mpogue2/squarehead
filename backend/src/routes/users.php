@@ -341,11 +341,15 @@ $app->post('/api/users', function (Request $request, Response $response) {
         
         $userModel = new User();
         
-        // Check if email already exists
-        $existingUser = $userModel->findByEmail($data['email']);
-        if ($existingUser) {
+        // Check for composite unique constraint violation (first_name + last_name + email)
+        // Allow multiple users to share the same email, but prevent exact duplicates
+        $stmt = $userModel->getDb()->prepare("SELECT id FROM users WHERE first_name = ? AND last_name = ? AND email = ?");
+        $stmt->execute([$data['first_name'], $data['last_name'], $data['email']]);
+        $duplicateUser = $stmt->fetch();
+        
+        if ($duplicateUser) {
             return ApiResponse::validationError($response, [
-                'email' => 'Email address already exists'
+                'email' => 'A user with this exact name and email combination already exists'
             ]);
         }
         
@@ -417,13 +421,28 @@ $app->put('/api/users/{id}', function (Request $request, Response $response, arr
             ]);
         }
         
-        // Check if email already exists (for other users)
-        if (!empty($data['email']) && $data['email'] !== $existingUser['email']) {
-            $emailUser = $userModel->findByEmail($data['email']);
-            if ($emailUser && $emailUser['id'] !== $id) {
-                return ApiResponse::validationError($response, [
-                    'email' => 'Email address already exists'
-                ]);
+        // Check for composite unique constraint violation (first_name + last_name + email)
+        // Allow multiple users to share the same email, but prevent exact duplicates
+        if (!empty($data['email']) || !empty($data['first_name']) || !empty($data['last_name'])) {
+            $checkEmail = $data['email'] ?? $existingUser['email'];
+            $checkFirstName = $data['first_name'] ?? $existingUser['first_name'];
+            $checkLastName = $data['last_name'] ?? $existingUser['last_name'];
+            
+            // Only check if we're changing any part of the composite key
+            $isChangingCompositeKey = ($checkEmail !== $existingUser['email']) || 
+                                    ($checkFirstName !== $existingUser['first_name']) || 
+                                    ($checkLastName !== $existingUser['last_name']);
+            
+            if ($isChangingCompositeKey) {
+                $stmt = $userModel->getDb()->prepare("SELECT id FROM users WHERE first_name = ? AND last_name = ? AND email = ? AND id != ?");
+                $stmt->execute([$checkFirstName, $checkLastName, $checkEmail, $id]);
+                $duplicateUser = $stmt->fetch();
+                
+                if ($duplicateUser) {
+                    return ApiResponse::validationError($response, [
+                        'email' => 'A user with this exact name and email combination already exists'
+                    ]);
+                }
             }
         }
         

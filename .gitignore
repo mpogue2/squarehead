@@ -15,6 +15,9 @@ yarn-debug.log*
 yarn-error.log*
 *.log
 
+# Backend logs directory
+backend/logs/*
+
 # Database files (exclude actual database files but allow schema/migrations)
 *.sqlite
 *.db
