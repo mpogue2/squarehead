@@ -52,10 +52,11 @@ class Database
         } else {
             // MySQL/MariaDB configuration
             $host = $_ENV['DB_HOST'] ?? 'localhost';
+            $port = $_ENV['DB_PORT'] ?? '3306';
             $username = $_ENV['DB_USER'] ?? 'root';
             $password = $_ENV['DB_PASS'] ?? '';
-            $dsn = "mysql:host={$host};dbname={$dbname};charset=utf8mb4";
-            error_log("Database::createConnection: Using MySQL with host: {$host}, database: {$dbname}");
+            $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4";
+            error_log("Database::createConnection: Using MySQL with host: {$host}, port: {$port}, database: {$dbname}");
         }
         
         $options = [

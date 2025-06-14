@@ -9,7 +9,7 @@ SET time_zone = "+00:00";
 -- Users Table: Club members and admin users
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL,
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     address TEXT,
@@ -27,6 +27,7 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
+    UNIQUE KEY unique_user_identity (first_name, last_name, email),
     INDEX idx_email (email),
     INDEX idx_status (status),
     INDEX idx_partner (partner_id),

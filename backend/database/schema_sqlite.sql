@@ -6,7 +6,7 @@ PRAGMA foreign_keys = ON;
 -- Users Table: Club members and admin users
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL,
     first_name TEXT NOT NULL,
     last_name TEXT NOT NULL,
     address TEXT,
@@ -28,6 +28,7 @@ CREATE TABLE users (
     FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE UNIQUE INDEX unique_user_identity ON users(first_name, last_name, email);
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_status ON users(status);
 CREATE INDEX idx_users_partner ON users(partner_id);

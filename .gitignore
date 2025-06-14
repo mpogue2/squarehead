@@ -24,6 +24,9 @@ backend/database/*.db
 backend/database/app.db
 backend/database/squarehead.*
 
+# MariaDB data directory (exclude all MariaDB database files)
+backend/database/mariadb_data/
+
 # Allow schema and migration files
 !backend/database/schema*.sql
 !backend/database/migrations/
@@ -53,6 +56,9 @@ backend/build/
 # Temporary files
 *.tmp
 *.temp
+
+# Test files
+backend/test_partners.csv
 
 # PHP specific
 backend/composer.phar
