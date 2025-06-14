@@ -157,6 +157,112 @@ $app->post('/api/schedules/next', function (Request $request, Response $response
     }
 })->add(new AuthMiddleware());
 
+// POST /api/schedules/next/add-dates - Add dates to existing next schedule (admin only)
+$app->post('/api/schedules/next/add-dates', function (Request $request, Response $response) {
+    try {
+        $isAdmin = $request->getAttribute('is_admin');
+        
+        if (!$isAdmin) {
+            return ApiResponse::error($response, 'Admin access required to modify schedules', 403);
+        }
+        
+        $data = json_decode($request->getBody()->getContents(), true);
+        
+        // Validate required fields
+        $requiredFields = ['start_date', 'end_date'];
+        $missingFields = [];
+        
+        foreach ($requiredFields as $field) {
+            if (empty($data[$field])) {
+                $missingFields[] = $field;
+            }
+        }
+        
+        if (!empty($missingFields)) {
+            return ApiResponse::validationError($response, [
+                'missing_fields' => $missingFields
+            ], 'Required fields are missing');
+        }
+        
+        // Validate dates
+        $startDate = $data['start_date'];
+        $endDate = $data['end_date'];
+        
+        if (!DateTime::createFromFormat('Y-m-d', $startDate)) {
+            return ApiResponse::validationError($response, [
+                'start_date' => 'Invalid date format. Use YYYY-MM-DD'
+            ]);
+        }
+        
+        if (!DateTime::createFromFormat('Y-m-d', $endDate)) {
+            return ApiResponse::validationError($response, [
+                'end_date' => 'Invalid date format. Use YYYY-MM-DD'
+            ]);
+        }
+        
+        if ($startDate >= $endDate) {
+            return ApiResponse::validationError($response, [
+                'end_date' => 'End date must be after start date'
+            ]);
+        }
+        
+        $scheduleModel = new Schedule();
+        
+        // Get existing next schedule
+        $existingNext = $scheduleModel->getNextSchedule();
+        if (!$existingNext) {
+            return ApiResponse::error($response, 'No next schedule exists to add dates to', 404);
+        }
+        
+        // Get club day of week from settings
+        $settingsModel = new Settings();
+        $clubDayOfWeek = $settingsModel->get('club_day_of_week') ?: 'Wednesday';
+        
+        // Add new assignments to existing schedule
+        $newAssignments = $scheduleModel->createScheduleAssignments(
+            $existingNext['id'],
+            $startDate,
+            $endDate,
+            $clubDayOfWeek
+        );
+        
+        // Get all assignments for the schedule (existing + new)
+        $allAssignments = $scheduleModel->getScheduleAssignments($existingNext['id']);
+        
+        // Update schedule end_date if the new end date is later
+        $currentEndDate = new DateTime($existingNext['end_date']);
+        $newEndDate = new DateTime($endDate);
+        
+        if ($newEndDate > $currentEndDate) {
+            $scheduleModel->update($existingNext['id'], ['end_date' => $endDate]);
+            $existingNext['end_date'] = $endDate;
+        }
+        
+        // Update schedule start_date if the new start date is earlier
+        $currentStartDate = new DateTime($existingNext['start_date']);
+        $newStartDate = new DateTime($startDate);
+        
+        if ($newStartDate < $currentStartDate) {
+            $scheduleModel->update($existingNext['id'], ['start_date' => $startDate]);
+            $existingNext['start_date'] = $startDate;
+        }
+        
+        $responseData = [
+            'schedule' => $existingNext,
+            'assignments' => $allAssignments,
+            'new_assignments' => $newAssignments,
+            'count' => count($allAssignments),
+            'added_count' => count($newAssignments)
+        ];
+        
+        return ApiResponse::success($response, $responseData, 
+            'Added ' . count($newAssignments) . ' new dates to existing schedule', 201);
+        
+    } catch (Exception $e) {
+        return ApiResponse::error($response, 'Failed to add dates to schedule: ' . $e->getMessage(), 500);
+    }
+})->add(new AuthMiddleware());
+
 // PUT /api/schedules/assignments/{id} - Update assignment (admin only)
 $app->put('/api/schedules/assignments/{id}', function (Request $request, Response $response, array $args) {
     try {

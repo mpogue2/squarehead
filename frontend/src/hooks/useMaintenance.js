@@ -58,7 +58,7 @@ export const useClearNextSchedule = () => {
       // Invalidate schedule queries to refresh the UI if queryClient is available
       if (queryClient) {
         queryClient.invalidateQueries({ queryKey: ['schedules'] })
-        queryClient.invalidateQueries({ queryKey: ['schedule', 'next'] })
+        queryClient.invalidateQueries({ queryKey: ['schedules', 'next'] })
       }
     },
     onError: (error) => {
@@ -88,7 +88,7 @@ export const useClearCurrentSchedule = () => {
       // Invalidate schedule queries to refresh the UI if queryClient is available
       if (queryClient) {
         queryClient.invalidateQueries({ queryKey: ['schedules'] })
-        queryClient.invalidateQueries({ queryKey: ['schedule', 'current'] })
+        queryClient.invalidateQueries({ queryKey: ['schedules', 'current'] })
       }
     },
     onError: (error) => {

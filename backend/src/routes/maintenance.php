@@ -24,13 +24,13 @@ $app->post('/api/maintenance/clear-members', function (Request $request, Respons
         $userModel = new User();
         
         // Get count before deletion
-        $stmt = $userModel->getConnection()->prepare("SELECT COUNT(*) as count FROM users WHERE email != 'mpogue@zenstarstudio.com'");
+        $stmt = $userModel->getDb()->prepare("SELECT COUNT(*) as count FROM users WHERE email != 'mpogue@zenstarstudio.com'");
         $stmt->execute();
         $beforeCount = $stmt->fetch()['count'];
         error_log("Found {$beforeCount} members to delete (excluding admin)");
         
         // Delete all users except the permanent admin
-        $stmt = $userModel->getConnection()->prepare("DELETE FROM users WHERE email != 'mpogue@zenstarstudio.com'");
+        $stmt = $userModel->getDb()->prepare("DELETE FROM users WHERE email != 'mpogue@zenstarstudio.com'");
         $success = $stmt->execute();
         $deletedCount = $stmt->rowCount();
         error_log("Deletion result: " . ($success ? 'Success' : 'Failed') . ", Deleted count: {$deletedCount}");
@@ -338,13 +338,13 @@ $app->get('/api/maintenance/test-clear-members', function (Request $request, Res
         $userModel = new User();
         
         // Get count before deletion
-        $stmt = $userModel->getConnection()->prepare("SELECT COUNT(*) as count FROM users WHERE email != 'mpogue@zenstarstudio.com'");
+        $stmt = $userModel->getDb()->prepare("SELECT COUNT(*) as count FROM users WHERE email != 'mpogue@zenstarstudio.com'");
         $stmt->execute();
         $beforeCount = $stmt->fetch()['count'];
         error_log("TEST ROUTE: Found {$beforeCount} members to delete (excluding admin)");
         
         // Delete all users except the permanent admin
-        $stmt = $userModel->getConnection()->prepare("DELETE FROM users WHERE email != 'mpogue@zenstarstudio.com'");
+        $stmt = $userModel->getDb()->prepare("DELETE FROM users WHERE email != 'mpogue@zenstarstudio.com'");
         $success = $stmt->execute();
         $deletedCount = $stmt->rowCount();
         error_log("TEST ROUTE: Deletion result: " . ($success ? 'Success' : 'Failed') . ", Deleted count: {$deletedCount}");
@@ -381,7 +381,7 @@ $app->post('/api/maintenance/clear-next-schedule', function (Request $request, R
         }
         
         $scheduleModel = new Schedule();
-        $db = $scheduleModel->getConnection();
+        $db = \App\Database::getConnection();
         
         // Get the next schedule
         $nextSchedule = $scheduleModel->getNextSchedule();
@@ -438,7 +438,7 @@ $app->post('/api/maintenance/clear-current-schedule', function (Request $request
         }
         
         $scheduleModel = new Schedule();
-        $db = $scheduleModel->getConnection();
+        $db = \App\Database::getConnection();
         
         // Get the current schedule
         $currentSchedule = $scheduleModel->getCurrentSchedule();

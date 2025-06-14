@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiService } from '../services/api'
+import api, { apiService } from '../services/api'
 import useSchedulesStore from '../store/schedulesStore'
 import useUIStore from '../store/uiStore'
 import { useToast } from '../components/ToastProvider'
@@ -50,9 +50,13 @@ export const useNextSchedule = () => {
       
       if (data.schedule) {
         setNextSchedule(data.schedule)
+      } else {
+        setNextSchedule(null)
       }
       if (data.assignments) {
         setAssignments(data.assignments)
+      } else {
+        setAssignments([])
       }
       
       return data
@@ -98,6 +102,30 @@ export const useCreateNextSchedule = () => {
     onError: (err) => {
       console.error('Failed to create schedule:', err)
       error('Failed to create schedule. Please try again.')
+    }
+  })
+}
+
+// Hook for adding dates to existing next schedule
+export const useAddDatesToSchedule = () => {
+  const queryClient = useQueryClient()
+  const { success, error: showError } = useToast()
+  
+  return useMutation({
+    mutationFn: async (scheduleData) => {
+      const response = await api.post('/schedules/next/add-dates', scheduleData)
+      return response
+    },
+    onSuccess: (data) => {
+      success(`Added ${data.added_count || 0} new dates to schedule successfully`)
+      
+      // Invalidate and refetch schedule queries
+      queryClient.invalidateQueries({ queryKey: ['schedules'] })
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'next'] })
+    },
+    onError: (error) => {
+      console.error('Failed to add dates to schedule:', error)
+      showError(error.response?.data?.message || 'Failed to add dates to schedule')
     }
   })
 }

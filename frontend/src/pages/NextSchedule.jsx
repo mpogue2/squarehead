@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Container, Row, Col, Card, Table, Badge, Alert, Spinner, Button, Form, Modal } from 'react-bootstrap'
-import { FaCalendarAlt, FaUsers, FaInfoCircle, FaExclamationTriangle, FaPlus, FaEdit, FaArrowUp, FaCheck } from 'react-icons/fa'
-import { useNextSchedule, useCreateNextSchedule, useUpdateAssignment, usePromoteSchedule } from '../hooks/useSchedules'
+import { FaCalendarAlt, FaUsers, FaInfoCircle, FaExclamationTriangle, FaPlus, FaEdit, FaArrowUp, FaCheck, FaTrash } from 'react-icons/fa'
+import { useNextSchedule, useCreateNextSchedule, useUpdateAssignment, usePromoteSchedule, useAddDatesToSchedule } from '../hooks/useSchedules'
+import { useClearNextSchedule } from '../hooks/useMaintenance'
 import AssignmentEditModal from '../components/schedules/AssignmentEditModal'
 import useAuthStore from '../store/authStore'
 import { formatDate, formatTableDate } from '../utils/dateUtils'
@@ -12,6 +13,8 @@ const NextSchedule = () => {
   const createSchedule = useCreateNextSchedule()
   const updateAssignment = useUpdateAssignment()
   const promoteSchedule = usePromoteSchedule()
+  const clearNextSchedule = useClearNextSchedule()
+  const addDatesToSchedule = useAddDatesToSchedule()
   
   // State for create schedule modal
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -29,6 +32,12 @@ const NextSchedule = () => {
 
   // State for promote confirmation modal
   const [showPromoteModal, setShowPromoteModal] = useState(false)
+
+  // State for clear schedule confirmation modal
+  const [showClearModal, setShowClearModal] = useState(false)
+
+  // State for add dates modal (reuses createForm state)
+  const [showAddDatesModal, setShowAddDatesModal] = useState(false)
 
   // Get club night type badge variant
   const getClubNightVariant = (type) => {
@@ -172,6 +181,48 @@ const NextSchedule = () => {
       setShowPromoteModal(false)
     } catch (err) {
       console.error('Failed to promote schedule:', err)
+    }
+  }
+
+  // Handle clear next schedule
+  const handleClearNextSchedule = async () => {
+    try {
+      await clearNextSchedule.mutateAsync()
+      setShowClearModal(false)
+    } catch (err) {
+      console.error('Failed to clear next schedule:', err)
+    }
+  }
+
+  // Handle add dates to schedule (uses dedicated add dates endpoint)
+  const handleAddDatesToSchedule = async () => {
+    try {
+      // Validate form
+      const errors = {}
+      if (!createForm.start_date) errors.start_date = 'Start date is required'
+      if (!createForm.end_date) errors.end_date = 'End date is required'
+      if (new Date(createForm.start_date) >= new Date(createForm.end_date)) {
+        errors.end_date = 'End date must be after start date'
+      }
+
+      if (Object.keys(errors).length > 0) {
+        setCreateErrors(errors)
+        return
+      }
+
+      // Use the dedicated add dates endpoint
+      const scheduleData = {
+        start_date: createForm.start_date,
+        end_date: createForm.end_date
+      }
+
+      await addDatesToSchedule.mutateAsync(scheduleData)
+      setShowAddDatesModal(false)
+      setCreateForm({ name: '', start_date: '', end_date: '' })
+      setCreateErrors({})
+      setCreateWarnings({})
+    } catch (err) {
+      console.error('Failed to add dates to schedule:', err)
     }
   }
 
@@ -393,12 +444,22 @@ const NextSchedule = () => {
                   Promote to Current
                 </Button>
                 <Button 
-                  variant="outline-primary" 
-                  onClick={() => setShowCreateModal(true)}
+                  variant="outline-danger" 
+                  onClick={() => setShowClearModal(true)}
                   size="sm"
+                  disabled={!scheduleData?.schedule}
+                >
+                  <FaTrash className="me-2" />
+                  Clear Next Schedule
+                </Button>
+                <Button 
+                  variant="outline-primary" 
+                  onClick={() => setShowAddDatesModal(true)}
+                  size="sm"
+                  disabled={!scheduleData?.schedule}
                 >
                   <FaPlus className="me-2" />
-                  New Schedule
+                  Add Dates to Schedule
                 </Button>
               </div>
             )}
@@ -681,6 +742,95 @@ const NextSchedule = () => {
             </Modal.Footer>
           </Modal>
 
+          {/* Add Dates to Schedule Modal */}
+          <Modal show={showAddDatesModal} onHide={() => setShowAddDatesModal(false)} size="lg">
+            <Modal.Header closeButton>
+              <Modal.Title>
+                <FaCalendarAlt className="me-2" />
+                Add Dates To Schedule
+              </Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+              <Form>
+                <Row>
+                  <Col md={6}>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Start Date *</Form.Label>
+                      <Form.Control
+                        type="date"
+                        value={createForm.start_date}
+                        onChange={(e) => handleStartDateChange(e.target.value)}
+                        isInvalid={!!createErrors.start_date}
+                      />
+                      <Form.Control.Feedback type="invalid">
+                        {createErrors.start_date}
+                      </Form.Control.Feedback>
+                      {createWarnings.start_date && (
+                        <div className="text-warning small mt-1">
+                          <FaExclamationTriangle className="me-1" />
+                          {createWarnings.start_date}
+                        </div>
+                      )}
+                      <Form.Text className="text-muted">
+                        First dance date to add
+                      </Form.Text>
+                    </Form.Group>
+                  </Col>
+                  <Col md={6}>
+                    <Form.Group className="mb-3">
+                      <Form.Label>End Date *</Form.Label>
+                      <Form.Control
+                        type="date"
+                        value={createForm.end_date}
+                        onChange={(e) => handleCreateFormChange('end_date', e.target.value)}
+                        isInvalid={!!createErrors.end_date}
+                      />
+                      <Form.Control.Feedback type="invalid">
+                        {createErrors.end_date}
+                      </Form.Control.Feedback>
+                      <Form.Text className="text-muted">
+                        Last dance date to add
+                      </Form.Text>
+                    </Form.Group>
+                  </Col>
+                </Row>
+                
+                <Alert variant="info" className="mb-0">
+                  <FaInfoCircle className="me-2" />
+                  <strong>Schedule Addition:</strong>
+                  <ul className="mb-0 mt-2">
+                    <li>New dance dates will be added to the existing "{schedule?.name}" schedule</li>
+                    <li>Dates will be automatically generated based on the club's day of the week</li>
+                    <li>All new assignments will start as unassigned and can be edited after creation</li>
+                    <li>Existing assignments in the schedule will remain unchanged</li>
+                  </ul>
+                </Alert>
+              </Form>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="secondary" onClick={() => setShowAddDatesModal(false)}>
+                Cancel
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={handleAddDatesToSchedule}
+                disabled={addDatesToSchedule.isLoading}
+              >
+                {addDatesToSchedule.isLoading ? (
+                  <>
+                    <Spinner animation="border" size="sm" className="me-2" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <FaPlus className="me-2" />
+                    Add Dates
+                  </>
+                )}
+              </Button>
+            </Modal.Footer>
+          </Modal>
+
           {/* Assignment Edit Modal */}
           <AssignmentEditModal
             show={showEditModal}
@@ -746,6 +896,61 @@ const NextSchedule = () => {
                   <>
                     <FaCheck className="me-2" />
                     Promote to Current
+                  </>
+                )}
+              </Button>
+            </Modal.Footer>
+          </Modal>
+
+          {/* Clear Next Schedule Confirmation Modal */}
+          <Modal show={showClearModal} onHide={() => setShowClearModal(false)}>
+            <Modal.Header closeButton>
+              <Modal.Title>
+                <FaTrash className="me-2" />
+                Clear Next Schedule
+              </Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+              <Alert variant="danger" className="mb-3">
+                <FaExclamationTriangle className="me-2" />
+                <strong>Warning:</strong> This action will permanently delete the entire next schedule and all its assignments.
+              </Alert>
+              
+              <p>Are you sure you want to completely clear "{schedule?.name}"?</p>
+              
+              <div className="mb-3">
+                <strong>What will be deleted:</strong>
+                <ul className="mt-2">
+                  <li>The entire schedule "{schedule?.name}"</li>
+                  <li>All {assignmentCount} dance date entries</li>
+                  <li>All squarehead assignments and partnerships</li>
+                  <li>All assignment notes and preferences</li>
+                </ul>
+              </div>
+              
+              <Alert variant="info" className="mb-0">
+                <FaInfoCircle className="me-2" />
+                <strong>Note:</strong> This will completely remove the next schedule. You'll need to create a new schedule or add dates to start fresh.
+              </Alert>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="secondary" onClick={() => setShowClearModal(false)}>
+                Cancel
+              </Button>
+              <Button 
+                variant="danger" 
+                onClick={handleClearNextSchedule}
+                disabled={clearNextSchedule.isLoading}
+              >
+                {clearNextSchedule.isLoading ? (
+                  <>
+                    <Spinner animation="border" size="sm" className="me-2" />
+                    Clearing...
+                  </>
+                ) : (
+                  <>
+                    <FaTrash className="me-2" />
+                    Clear Entire Schedule
                   </>
                 )}
               </Button>
