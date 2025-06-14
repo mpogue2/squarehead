@@ -107,9 +107,9 @@ $app->post('/api/schedules/next', function (Request $request, Response $response
             ]);
         }
         
-        if ($startDate >= $endDate) {
+        if ($startDate > $endDate) {
             return ApiResponse::validationError($response, [
-                'end_date' => 'End date must be after start date'
+                'end_date' => 'End date must be on or after start date'
             ]);
         }
         
@@ -200,9 +200,9 @@ $app->post('/api/schedules/next/add-dates', function (Request $request, Response
             ]);
         }
         
-        if ($startDate >= $endDate) {
+        if ($startDate > $endDate) {
             return ApiResponse::validationError($response, [
-                'end_date' => 'End date must be after start date'
+                'end_date' => 'End date must be on or after start date'
             ]);
         }
         

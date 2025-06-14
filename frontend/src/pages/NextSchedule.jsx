@@ -98,8 +98,10 @@ const NextSchedule = () => {
       const startDate = new Date(createForm.start_date)
       const endDate = new Date(createForm.end_date)
       
-      if (endDate <= startDate) {
-        errors.end_date = 'End date must be after start date'
+      if (endDate < startDate) {
+        errors.end_date = 'End date must be on or after start date'
+      } else if (endDate.getTime() === startDate.getTime()) {
+        warnings.end_date = 'This will create a single-day schedule'
       }
       
       // Check if start date is in the past - show warning instead of error
@@ -201,8 +203,8 @@ const NextSchedule = () => {
       const errors = {}
       if (!createForm.start_date) errors.start_date = 'Start date is required'
       if (!createForm.end_date) errors.end_date = 'End date is required'
-      if (new Date(createForm.start_date) >= new Date(createForm.end_date)) {
-        errors.end_date = 'End date must be after start date'
+      if (new Date(createForm.start_date) > new Date(createForm.end_date)) {
+        errors.end_date = 'End date must be on or after start date'
       }
 
       if (Object.keys(errors).length > 0) {
@@ -788,6 +790,12 @@ const NextSchedule = () => {
                       <Form.Control.Feedback type="invalid">
                         {createErrors.end_date}
                       </Form.Control.Feedback>
+                      {createWarnings.end_date && (
+                        <div className="text-warning small mt-1">
+                          <FaExclamationTriangle className="me-1" />
+                          {createWarnings.end_date}
+                        </div>
+                      )}
                       <Form.Text className="text-muted">
                         Last dance date to add
                       </Form.Text>
