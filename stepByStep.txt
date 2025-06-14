@@ -35,7 +35,7 @@ http://localhost:8000
 TESTING:
 There is a development login bypass using a token that is good for a year.  We will use this URL for testing:
 
-http://localhost:5181/members?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJpYXQiOjE3NDk0NDkxNDMsImV4cCI6MTc4MDk4NTE0MywidXNlcl9pZCI6MSwiZW1haWwiOiJtcG9ndWVAemVuc3RhcnN0dWRpby5jb20iLCJpc19hZG1pbiI6dHJ1ZSwicm9sZSI6ImFkbWluIiwiZGV2X2xvbmdfbGl2ZWQiOnRydWV9.QY8waozaVqtjjhKDM3rj1751xI-vw5ypz6Tje_U6fBI
+http://localhost:5181/members?token=YOUR_LONG_DURATION_TOKEN_HERE
 
 CURRENT STATUS: 
 - The previous list of PHASES that we had created was completed.  
