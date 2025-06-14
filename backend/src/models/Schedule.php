@@ -191,6 +191,45 @@ class Schedule extends BaseModel
     }
     
     /**
+     * Get assignment by ID
+     */
+    public function getAssignmentById(int $assignmentId): ?array
+    {
+        $stmt = $this->db->prepare("
+            SELECT 
+                sa.*,
+                u1.first_name as squarehead1_first_name,
+                u1.last_name as squarehead1_last_name,
+                u2.first_name as squarehead2_first_name,
+                u2.last_name as squarehead2_last_name,
+                CASE 
+                    WHEN u1.first_name IS NOT NULL THEN CONCAT(u1.first_name, ' ', u1.last_name)
+                    ELSE NULL 
+                END as squarehead1_name,
+                CASE 
+                    WHEN u2.first_name IS NOT NULL THEN CONCAT(u2.first_name, ' ', u2.last_name)
+                    ELSE NULL 
+                END as squarehead2_name
+            FROM schedule_assignments sa
+            LEFT JOIN users u1 ON sa.squarehead1_id = u1.id
+            LEFT JOIN users u2 ON sa.squarehead2_id = u2.id
+            WHERE sa.id = ?
+        ");
+        $stmt->execute([$assignmentId]);
+        
+        return $stmt->fetch() ?: null;
+    }
+    
+    /**
+     * Delete assignment by ID
+     */
+    public function deleteAssignment(int $assignmentId): bool
+    {
+        $stmt = $this->db->prepare("DELETE FROM schedule_assignments WHERE id = ?");
+        return $stmt->execute([$assignmentId]);
+    }
+    
+    /**
      * Promote next schedule to current
      */
     public function promoteNextToCurrent(): bool

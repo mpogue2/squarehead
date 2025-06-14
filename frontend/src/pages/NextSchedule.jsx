@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Container, Row, Col, Card, Table, Badge, Alert, Spinner, Button, Form, Modal } from 'react-bootstrap'
 import { FaCalendarAlt, FaUsers, FaInfoCircle, FaExclamationTriangle, FaPlus, FaEdit, FaArrowUp, FaCheck, FaTrash } from 'react-icons/fa'
-import { useNextSchedule, useCreateNextSchedule, useUpdateAssignment, usePromoteSchedule, useAddDatesToSchedule } from '../hooks/useSchedules'
+import { useNextSchedule, useCreateNextSchedule, useUpdateAssignment, useDeleteAssignment, usePromoteSchedule, useAddDatesToSchedule } from '../hooks/useSchedules'
 import { useClearNextSchedule } from '../hooks/useMaintenance'
 import AssignmentEditModal from '../components/schedules/AssignmentEditModal'
 import useAuthStore from '../store/authStore'
@@ -12,6 +12,7 @@ const NextSchedule = () => {
   const { data: scheduleData, isLoading, isError, error } = useNextSchedule()
   const createSchedule = useCreateNextSchedule()
   const updateAssignment = useUpdateAssignment()
+  const deleteAssignment = useDeleteAssignment()
   const promoteSchedule = usePromoteSchedule()
   const clearNextSchedule = useClearNextSchedule()
   const addDatesToSchedule = useAddDatesToSchedule()
@@ -38,6 +39,10 @@ const NextSchedule = () => {
 
   // State for add dates modal (reuses createForm state)
   const [showAddDatesModal, setShowAddDatesModal] = useState(false)
+
+  // State for delete assignment confirmation modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [assignmentToDelete, setAssignmentToDelete] = useState(null)
 
   // Get club night type badge variant
   const getClubNightVariant = (type) => {
@@ -225,6 +230,25 @@ const NextSchedule = () => {
       setCreateWarnings({})
     } catch (err) {
       console.error('Failed to add dates to schedule:', err)
+    }
+  }
+
+  // Handle delete assignment confirmation
+  const handleDeleteAssignment = (assignment) => {
+    setAssignmentToDelete(assignment)
+    setShowDeleteModal(true)
+  }
+
+  // Handle delete assignment
+  const handleConfirmDeleteAssignment = async () => {
+    if (!assignmentToDelete) return
+
+    try {
+      await deleteAssignment.mutateAsync(assignmentToDelete.id)
+      setShowDeleteModal(false)
+      setAssignmentToDelete(null)
+    } catch (err) {
+      console.error('Failed to delete assignment:', err)
     }
   }
 
@@ -609,16 +633,28 @@ const NextSchedule = () => {
                             </td>
                             {user?.is_admin && (
                               <td>
-                                <Button
-                                  variant="outline-primary"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleEditAssignment(assignment)
-                                  }}
-                                >
-                                  <FaEdit />
-                                </Button>
+                                <div className="d-flex gap-1">
+                                  <Button
+                                    variant="outline-primary"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleEditAssignment(assignment)
+                                    }}
+                                  >
+                                    <FaEdit />
+                                  </Button>
+                                  <Button
+                                    variant="outline-danger"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleDeleteAssignment(assignment)
+                                    }}
+                                  >
+                                    <FaTrash />
+                                  </Button>
+                                </div>
                               </td>
                             )}
                           </tr>
@@ -959,6 +995,59 @@ const NextSchedule = () => {
                   <>
                     <FaTrash className="me-2" />
                     Clear Entire Schedule
+                  </>
+                )}
+              </Button>
+            </Modal.Footer>
+          </Modal>
+
+          {/* Delete Assignment Confirmation Modal */}
+          <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)}>
+            <Modal.Header closeButton>
+              <Modal.Title>
+                <FaTrash className="me-2" />
+                Delete Date
+              </Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+              <Alert variant="danger" className="mb-3">
+                <FaExclamationTriangle className="me-2" />
+                <strong>Warning:</strong> This action will permanently delete this dance date.
+              </Alert>
+              
+              {assignmentToDelete && (
+                <p>Are you sure you want to delete the dance on <strong>{formatTableDate(assignmentToDelete.dance_date)}</strong>?</p>
+              )}
+              
+              <div className="mb-3">
+                <strong>Assignment Details:</strong>
+                <ul className="mt-2">
+                  <li>Date: {assignmentToDelete && formatTableDate(assignmentToDelete.dance_date)}</li>
+                  <li>Club Night: {assignmentToDelete?.club_night_type || 'NORMAL'}</li>
+                  <li>Squarehead 1: {assignmentToDelete?.squarehead1_name || 'Unassigned'}</li>
+                  <li>Squarehead 2: {assignmentToDelete?.squarehead2_name || 'Unassigned'}</li>
+                  {assignmentToDelete?.notes && <li>Notes: {assignmentToDelete.notes}</li>}
+                </ul>
+              </div>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>
+                Cancel
+              </Button>
+              <Button 
+                variant="danger" 
+                onClick={handleConfirmDeleteAssignment}
+                disabled={deleteAssignment.isLoading}
+              >
+                {deleteAssignment.isLoading ? (
+                  <>
+                    <Spinner animation="border" size="sm" className="me-2" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <FaTrash className="me-2" />
+                    Delete Date
                   </>
                 )}
               </Button>

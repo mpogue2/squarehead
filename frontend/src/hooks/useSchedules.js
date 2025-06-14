@@ -162,6 +162,30 @@ export const useUpdateAssignment = () => {
   })
 }
 
+// Hook for deleting an assignment
+export const useDeleteAssignment = () => {
+  const queryClient = useQueryClient()
+  const { success, error: showError } = useToast()
+  
+  return useMutation({
+    mutationFn: async (assignmentId) => {
+      const response = await api.delete(`/schedules/assignments/${assignmentId}`)
+      return response
+    },
+    onSuccess: () => {
+      success('Assignment deleted successfully')
+      
+      // Invalidate and refetch schedule queries
+      queryClient.invalidateQueries({ queryKey: ['schedules'] })
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'next'] })
+    },
+    onError: (error) => {
+      console.error('Failed to delete assignment:', error)
+      showError(error.response?.data?.message || 'Failed to delete assignment')
+    }
+  })
+}
+
 // Hook for promoting next schedule to current
 export const usePromoteSchedule = () => {
   // Safe initialization of queryClient

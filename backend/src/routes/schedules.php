@@ -309,6 +309,46 @@ $app->put('/api/schedules/assignments/{id}', function (Request $request, Respons
     }
 })->add(new AuthMiddleware());
 
+// DELETE /api/schedules/assignments/{id} - Delete assignment (admin only)
+$app->delete('/api/schedules/assignments/{id}', function (Request $request, Response $response, array $args) {
+    try {
+        $isAdmin = $request->getAttribute('is_admin');
+        
+        if (!$isAdmin) {
+            return ApiResponse::error($response, 'Admin access required to delete assignments', 403);
+        }
+        
+        $assignmentId = (int)$args['id'];
+        
+        if ($assignmentId <= 0) {
+            return ApiResponse::validationError($response, ['id' => 'Invalid assignment ID']);
+        }
+        
+        $scheduleModel = new Schedule();
+        
+        // Check if assignment exists
+        $assignment = $scheduleModel->getAssignmentById($assignmentId);
+        if (!$assignment) {
+            return ApiResponse::notFound($response, 'Assignment not found');
+        }
+        
+        // Delete the assignment
+        $success = $scheduleModel->deleteAssignment($assignmentId);
+        
+        if (!$success) {
+            return ApiResponse::error($response, 'Failed to delete assignment', 500);
+        }
+        
+        return ApiResponse::success($response, [
+            'deleted_assignment_id' => $assignmentId,
+            'dance_date' => $assignment['dance_date']
+        ], 'Assignment deleted successfully');
+        
+    } catch (Exception $e) {
+        return ApiResponse::error($response, 'Failed to delete assignment: ' . $e->getMessage(), 500);
+    }
+})->add(new AuthMiddleware());
+
 // POST /api/schedules/promote - Promote next schedule to current (admin only)
 $app->post('/api/schedules/promote', function (Request $request, Response $response) {
     try {
