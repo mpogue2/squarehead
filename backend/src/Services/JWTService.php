@@ -11,7 +11,7 @@ class JWTService
 {
     private string $secretKey;
     private string $algorithm = 'HS256';
-    private int $expiration = 3600; // 1 hour
+    private int $expiration = 14400; // 4 hours
     
     public function __construct()
     {
