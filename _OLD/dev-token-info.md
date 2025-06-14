@@ -7,7 +7,7 @@
 
 ## 1-Year Development Token
 
-**Token:** `eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJpYXQiOjE3NDk0NDkxNDMsImV4cCI6MTc4MDk4NTE0MywidXNlcl9pZCI6MSwiZW1haWwiOiJtcG9ndWVAemVuc3RhcnN0dWRpby5jb20iLCJpc19hZG1pbiI6dHJ1ZSwicm9sZSI6ImFkbWluIiwiZGV2X2xvbmdfbGl2ZWQiOnRydWV9.QY8waozaVqtjjhKDM3rj1751xI-vw5ypz6Tje_U6fBI`
+**Token:** `YOUR_DEVELOPMENT_TOKEN_HERE`
 
 **Expires:** June 8, 2026 (1 year from now)
 
@@ -16,13 +16,13 @@
 ### 1. Direct Login URL (Recommended)
 This URL will automatically log you in and redirect to a success page:
 ```
-http://localhost:5181/auth/dev-login?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJpYXQiOjE3NDk0NDkxNDMsImV4cCI6MTc4MDk4NTE0MywidXNlcl9pZCI6MSwiZW1haWwiOiJtcG9ndWVAemVuc3RhcnN0dWRpby5jb20iLCJpc19hZG1pbiI6dHJ1ZSwicm9sZSI6ImFkbWluIiwiZGV2X2xvbmdfbGl2ZWQiOnRydWV9.QY8waozaVqtjjhKDM3rj1751xI-vw5ypz6Tje_U6fBI
+http://localhost:5181/auth/dev-login?token=YOUR_DEVELOPMENT_TOKEN_HERE
 ```
 
 ### 2. Direct to Members Page URL
 This URL will automatically log you in and take you directly to the Members page:
 ```
-http://localhost:5181/members?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJpYXQiOjE3NDk0NDkxNDMsImV4cCI6MTc4MDk4NTE0MywidXNlcl9pZCI6MSwiZW1haWwiOiJtcG9ndWVAemVuc3RhcnN0dWRpby5jb20iLCJpc19hZG1pbiI6dHJ1ZSwicm9sZSI6ImFkbWluIiwiZGV2X2xvbmdfbGl2ZWQiOnRydWV9.QY8waozaVqtjjhKDM3rj1751xI-vw5ypz6Tje_U6fBI
+http://localhost:5181/members?token=YOUR_DEVELOPMENT_TOKEN_HERE
 ```
 
 ## User Information
