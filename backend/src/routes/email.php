@@ -283,3 +283,145 @@ $app->post('/api/email/test-smtp', function (Request $request, Response $respons
         return ApiResponse::error($response, 'SMTP test failed: ' . $e->getMessage(), 500);
     }
 })->add(new AuthMiddleware());
+
+// POST /api/email/test-reminders - Test what reminders would be sent on a specific date
+$app->post('/api/email/test-reminders', function (Request $request, Response $response) {
+    try {
+        // Check if user is admin
+        $isAdmin = $request->getAttribute('is_admin');
+        
+        if (!$isAdmin) {
+            return ApiResponse::error($response, 'Admin access required to test reminders', 403);
+        }
+        
+        // Get request data
+        $data = json_decode($request->getBody()->getContents(), true);
+        
+        // Validate required fields
+        if (empty($data['test_date'])) {
+            return ApiResponse::validationError($response, ['test_date' => 'Test date is required'], 'Test date is required');
+        }
+        
+        $testDate = $data['test_date'];
+        
+        // Validate date format
+        $dateObj = DateTime::createFromFormat('Y-m-d', $testDate);
+        if (!$dateObj || $dateObj->format('Y-m-d') !== $testDate) {
+            return ApiResponse::validationError($response, ['test_date' => 'Invalid date format. Use YYYY-MM-DD'], 'Invalid date format');
+        }
+        
+        // Get settings
+        $settingsModel = new Settings();
+        $reminderDaysStr = $settingsModel->get('reminder_days');
+        
+        if (!$reminderDaysStr) {
+            return ApiResponse::success($response, [
+                'reminders' => [],
+                'reminder_days' => 'Not configured'
+            ], 'No reminder settings configured');
+        }
+        
+        // Parse reminder days
+        $reminderDays = array_map('intval', array_filter(explode(',', $reminderDaysStr)));
+        
+        if (empty($reminderDays)) {
+            return ApiResponse::success($response, [
+                'reminders' => [],
+                'reminder_days' => $reminderDaysStr
+            ], 'No valid reminder days configured');
+        }
+        
+        // Get database connection
+        $db = \App\Database::getConnection();
+        
+        // Calculate what dance dates would trigger reminders on the test date
+        $reminders = [];
+        
+        foreach ($reminderDays as $days) {
+            // Calculate target dance date (test_date + days)
+            $targetDate = date('Y-m-d', strtotime($testDate . ' +' . $days . ' days'));
+            
+            // Find assignments for that date in the current active schedule
+            $sql = "
+                SELECT 
+                    sa.dance_date,
+                    sa.club_night_type,
+                    sa.squarehead1_id,
+                    sa.squarehead2_id,
+                    u1.first_name as squarehead1_first_name,
+                    u1.last_name as squarehead1_last_name,
+                    u2.first_name as squarehead2_first_name,
+                    u2.last_name as squarehead2_last_name
+                FROM schedule_assignments sa
+                INNER JOIN schedules s ON sa.schedule_id = s.id
+                LEFT JOIN users u1 ON sa.squarehead1_id = u1.id
+                LEFT JOIN users u2 ON sa.squarehead2_id = u2.id
+                WHERE s.schedule_type = 'current' 
+                AND s.is_active = 1
+                AND sa.dance_date = ?
+                ORDER BY sa.dance_date
+            ";
+            
+            $stmt = $db->prepare($sql);
+            $stmt->execute([$targetDate]);
+            $assignments = $stmt->fetchAll();
+            
+            foreach ($assignments as $assignment) {
+                // Add reminder for squarehead1 if assigned
+                if ($assignment['squarehead1_id']) {
+                    $partnerName = null;
+                    if ($assignment['squarehead2_id'] && $assignment['squarehead2_first_name']) {
+                        $partnerName = $assignment['squarehead2_first_name'] . ' ' . $assignment['squarehead2_last_name'];
+                    }
+                    
+                    $reminders[] = [
+                        'member_name' => $assignment['squarehead1_first_name'] . ' ' . $assignment['squarehead1_last_name'],
+                        'dance_date' => $assignment['dance_date'],
+                        'days_until' => $days,
+                        'club_night_type' => $assignment['club_night_type'],
+                        'partner_name' => $partnerName
+                    ];
+                }
+                
+                // Add reminder for squarehead2 if assigned and different from squarehead1
+                if ($assignment['squarehead2_id'] && $assignment['squarehead2_id'] !== $assignment['squarehead1_id']) {
+                    $partnerName = null;
+                    if ($assignment['squarehead1_id'] && $assignment['squarehead1_first_name']) {
+                        $partnerName = $assignment['squarehead1_first_name'] . ' ' . $assignment['squarehead1_last_name'];
+                    }
+                    
+                    $reminders[] = [
+                        'member_name' => $assignment['squarehead2_first_name'] . ' ' . $assignment['squarehead2_last_name'],
+                        'dance_date' => $assignment['dance_date'],
+                        'days_until' => $days,
+                        'club_night_type' => $assignment['club_night_type'],
+                        'partner_name' => $partnerName
+                    ];
+                }
+            }
+        }
+        
+        // Sort reminders by dance date and member name
+        usort($reminders, function($a, $b) {
+            $dateCompare = strcmp($a['dance_date'], $b['dance_date']);
+            if ($dateCompare === 0) {
+                return strcmp($a['member_name'], $b['member_name']);
+            }
+            return $dateCompare;
+        });
+        
+        return ApiResponse::success($response, [
+            'reminders' => $reminders,
+            'reminder_days' => $reminderDaysStr,
+            'test_date' => $testDate,
+            'total_reminders' => count($reminders)
+        ], count($reminders) > 0 ? 
+            'Found ' . count($reminders) . ' reminder(s) that would be sent on ' . $testDate : 
+            'No reminders would be sent on ' . $testDate
+        );
+        
+    } catch (Exception $e) {
+        error_log("Test reminders error: " . $e->getMessage());
+        return ApiResponse::error($response, 'Failed to test reminders: ' . $e->getMessage(), 500);
+    }
+})->add(new AuthMiddleware());

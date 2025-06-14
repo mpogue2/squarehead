@@ -16,6 +16,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { useSettings, useUpdateSettings, useTestEmail, useTestSMTPConfig } from '../hooks/useSettings'
 import { useToast } from '../components/ToastProvider'
+import TestRemindersModal from '../components/admin/TestRemindersModal'
 
 // Import maintenance hooks directly from the file
 let useClearMembers, useClearNextSchedule, useClearCurrentSchedule
@@ -125,6 +126,9 @@ const Admin = () => {
     message: '',
     confirmHandler: null
   })
+  
+  // Test Reminders modal state
+  const [showTestRemindersModal, setShowTestRemindersModal] = useState(false)
   
   // Modal visibility state (separate from content for more reliable control)
   const [isModalVisible, setIsModalVisible] = useState(false)
@@ -911,6 +915,16 @@ Best regards,
                 For example: "14,7,3,1" sends reminders 14 days, 7 days, 3 days, and 1 day before each dance.
               </Form.Text>
             </Form.Group>
+            
+            <div className="d-flex gap-2">
+              <Button 
+                variant="outline-primary" 
+                size="sm"
+                onClick={() => setShowTestRemindersModal(true)}
+              >
+                🧪 Test Reminders
+              </Button>
+            </div>
           </Card.Body>
         </Card>
 
@@ -1519,6 +1533,12 @@ Best regards,
           </Button>
         </Modal.Footer>
       </Modal>
+      
+      {/* Test Reminders Modal */}
+      <TestRemindersModal 
+        show={showTestRemindersModal}
+        onHide={() => setShowTestRemindersModal(false)}
+      />
     </div>
   )
 }
