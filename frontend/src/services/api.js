@@ -303,6 +303,7 @@ export const apiService = {
   
   // Email endpoints
   testEmail: (emailData) => api.post('/email/test-reminder', emailData),
+  testSMTPConfig: (smtpData) => api.post('/email/test-smtp', smtpData),
 
   // Schedule endpoints
   getCurrentSchedule: () => api.get('/schedules/current'),

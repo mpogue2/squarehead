@@ -188,3 +188,30 @@ export const useTestEmail = () => {
     }
   })
 }
+
+// Hook for testing SMTP configuration
+export const useTestSMTPConfig = () => {
+  const { success, error } = useToast()
+  
+  return useMutation({
+    mutationFn: (smtpData) => apiService.testSMTPConfig(smtpData),
+    onSuccess: (data) => {
+      const message = data?.message || 'SMTP test email sent successfully! Check your inbox.'
+      success(message)
+    },
+    onError: (err) => {
+      console.error('Failed to test SMTP configuration:', err)
+      let errorMsg = 'SMTP configuration test failed. '
+      
+      if (err.response?.data?.errors?.error) {
+        errorMsg += err.response.data.errors.error
+      } else if (err.response?.data?.message) {
+        errorMsg += err.response.data.message
+      } else {
+        errorMsg += 'Please check your SMTP settings.'
+      }
+      
+      error(errorMsg)
+    }
+  })
+}

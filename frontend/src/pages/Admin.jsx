@@ -14,7 +14,7 @@ import {
   Tooltip
 } from 'react-bootstrap'
 import { useQueryClient } from '@tanstack/react-query'
-import { useSettings, useUpdateSettings, useTestEmail } from '../hooks/useSettings'
+import { useSettings, useUpdateSettings, useTestEmail, useTestSMTPConfig } from '../hooks/useSettings'
 import { useToast } from '../components/ToastProvider'
 
 // Import maintenance hooks directly from the file
@@ -45,6 +45,7 @@ const Admin = () => {
   const { data: settings, isLoading, error } = useSettings()
   const updateSettingsMutation = useUpdateSettings()
   const testEmailMutation = useTestEmail()
+  const testSMTPMutation = useTestSMTPConfig()
   const clearMembersMutation = useClearMembers()
   const clearNextScheduleMutation = useClearNextSchedule()
   const clearCurrentScheduleMutation = useClearCurrentSchedule()
@@ -1181,6 +1182,54 @@ Best regards,
                     Password for SMTP authentication
                   </Form.Text>
                 </Form.Group>
+              </Col>
+            </Row>
+            
+            {/* SMTP Test Button */}
+            <Row className="mt-4">
+              <Col>
+                <div className="d-flex align-items-center gap-3">
+                  <Button 
+                    variant="outline-success" 
+                    size="sm"
+                    disabled={testSMTPMutation.isLoading || !formData.smtp_host || !formData.smtp_port}
+                    onClick={() => {
+                      const smtpData = {
+                        smtp_host: formData.smtp_host,
+                        smtp_port: formData.smtp_port,
+                        smtp_username: formData.smtp_username,
+                        smtp_password: formData.smtp_password
+                      }
+                      testSMTPMutation.mutate(smtpData)
+                    }}
+                  >
+                    {testSMTPMutation.isLoading ? (
+                      <>
+                        <Spinner animation="border" size="sm" className="me-1" />
+                        Testing...
+                      </>
+                    ) : (
+                      <>
+                        📧 Test Email
+                      </>
+                    )}
+                  </Button>
+                  
+                  {testSMTPMutation.isSuccess && (
+                    <Badge bg="success" className="d-flex align-items-center gap-1">
+                      ✅ SMTP Configuration Working
+                    </Badge>
+                  )}
+                  
+                  {testSMTPMutation.isError && (
+                    <Badge bg="danger" className="d-flex align-items-center gap-1">
+                      ❌ SMTP Configuration Failed
+                    </Badge>
+                  )}
+                </div>
+                <Form.Text className="text-muted mt-2">
+                  Sends a test email to your admin email address to verify SMTP configuration. Make sure to save your settings first.
+                </Form.Text>
               </Col>
             </Row>
           </Card.Body>
