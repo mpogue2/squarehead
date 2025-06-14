@@ -55,7 +55,7 @@ The following test SMTP configuration was successfully saved:
 - **Host**: `mail.zenstarstudio.com`
 - **Port**: `587`
 - **Username**: `squareheads@zenstarstudio.com`  
-- **Password**: `squareheads69!`
+- **Password**: `YOUR_SMTP_PASSWORD_HERE`
 
 ## CORS Issue Fixed
 
