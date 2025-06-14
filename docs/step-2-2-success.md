@@ -35,7 +35,7 @@ curl -X POST http://localhost:8000/api/auth/send-login-link \
 ```sql
 SELECT token, expires_at FROM login_tokens WHERE user_id = 1 ORDER BY created_at DESC LIMIT 1;
 ```
-**Token**: `b1f1206129c6ca87b22a8d60371c2191baeb0a88b721170e6749524ac50778a0`
+**Token**: `YOUR_TEST_TOKEN_HERE`
 
 #### **Token Validation Success:**
 **Request**: POST /api/auth/validate-token with fresh token
@@ -44,7 +44,7 @@ SELECT token, expires_at FROM login_tokens WHERE user_id = 1 ORDER BY created_at
 {
   "status": "success",
   "data": {
-    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjgwMDAiLCJpYXQiOjE3NDkzNzUyNTUsImV4cCI6MTc0OTM3ODg1NSwidXNlcl9pZCI6MSwiZW1haWwiOiJtcG9ndWVAemVuc3RhcnN0dWRpby5jb20iLCJpc19hZG1pbiI6dHJ1ZSwicm9sZSI6ImFkbWluIn0.fFp_YTo3OcdI-uU864w_qjA9plaWRFIOHJCSwv9itQ0",
+    "token": "YOUR_TEST_TOKEN_HERE",
     "user": {
       "id": 1,
       "email": "mpogue@zenstarstudio.com",
@@ -106,5 +106,5 @@ The authentication foundation is rock-solid. We now have:
 
 All core infrastructure is operational and ready for building the full Square Dance club management features!
 
-**Test Token for Development**: `b1f1206129c6ca87b22a8d60371c2191baeb0a88b721170e6749524ac50778a0`
-**Test Login URL**: http://localhost:5175/login?token=b1f1206129c6ca87b22a8d60371c2191baeb0a88b721170e6749524ac50778a0
+**Test Token for Development**: `YOUR_TEST_TOKEN_HERE`
+**Test Login URL**: http://localhost:5175/login?token=YOUR_TEST_TOKEN_HERE
