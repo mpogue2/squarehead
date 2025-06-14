@@ -6,7 +6,7 @@ Successfully implemented the Google Maps integration for displaying member locat
 
 ### ✅ Step 7.1: Google Map with Member Addresses as Yellow Stars
 - **COMPLETED** - Integrated Google Maps JavaScript API
-- **COMPLETED** - Used temporary testing API key: `AIzaSyBl_FwZaAhv8LPrYH-uT45nIU83ekbjjvA`
+- **COMPLETED** - Used temporary testing API key: `INSERT_GOOGLE_MAPS_API_KEY_HERE`
 - **COMPLETED** - Centered map on San Jose coordinates: lat: 37.3382, lng: -121.8863
 - **COMPLETED** - Created custom yellow star icons for member locations
 - **COMPLETED** - Implemented geocoding to convert member addresses to coordinates

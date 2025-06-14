@@ -21,7 +21,7 @@ const Map = () => {
   
   // Get settings data (handle both possible formats)
   const settingsData = settings?.data || settings || {}
-  const GOOGLE_API_KEY = settingsData.google_api_key || 'AIzaSyBl_FwZaAhv8LPrYH-uT45nIU83ekbjjvA'
+  const GOOGLE_API_KEY = settingsData.google_api_key || 'INSERT_GOOGLE_MAPS_API_KEY_HERE'
   
   // Use cached club location if available, otherwise fall back to hardcoded coordinates
   const CLUB_LOCATION = (settingsData.club_lat && settingsData.club_lng) ? {
